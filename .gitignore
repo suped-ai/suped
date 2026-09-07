@@ -3,4 +3,5 @@ dist/
 *.tgz
 .DS_Store
 openquestions.md
-deploy.md.wrangler/
+deploy.md
+.wrangler/
