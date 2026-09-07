@@ -10,6 +10,8 @@ mountWave('#hero', {
   boost: 1,
   opacity: 0.5,
   lightMode: false,
+  // phones: a tenth of the cells, so spend it on brightness
+  touch: { opacity: 0.75, boost: 2 },
 });
 
 const cmd = document.querySelector<HTMLButtonElement>('#cmd');

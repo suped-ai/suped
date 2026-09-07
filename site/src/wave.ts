@@ -24,6 +24,12 @@ export interface MountOptions extends WaveBackgroundOptions {
   fps?: number;
   /** Cap on device pixel ratio for the backing store (default 1). */
   maxDpr?: number;
+  /**
+   * Overrides applied on devices with no hover pointer (phones, tablets).
+   * Small screens have a tenth of the cells, so they can afford a brighter
+   * render: typically a higher opacity and an extra boost pass.
+   */
+  touch?: Partial<Omit<MountOptions, 'touch'>>;
 }
 
 interface Backend {
@@ -36,7 +42,12 @@ interface Backend {
 }
 
 export function mountWave(target: string | HTMLElement, opts: MountOptions = {}) {
-  const { boost = 1, opacity = 1, fps = 20, maxDpr = 1, ...waveOpts } = opts;
+  // No hover pointer (phones, tablets): the vortex would park at the center
+  // forever, so let it wander slowly instead. A real pointer takes over on
+  // the first mousemove. The same signal selects the `touch` overrides.
+  const drift = matchMedia('(hover: none)').matches;
+  const { touch, ...base } = opts;
+  const { boost = 1, opacity = 1, fps = 20, maxDpr = 1, ...waveOpts } = drift ? { ...base, ...touch } : base;
   const host = typeof target === 'string' ? document.querySelector<HTMLElement>(target) : target;
   if (!host) throw new Error(`mountWave: target not found: ${String(target)}`);
 
@@ -48,11 +59,6 @@ export function mountWave(target: string | HTMLElement, opts: MountOptions = {})
 
   const dpr = Math.min(window.devicePixelRatio || 1, maxDpr);
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
-
-  // No hover pointer (phones, tablets): the vortex would park at the center
-  // forever, so let it wander slowly instead. A real pointer takes over on
-  // the first mousemove.
-  const drift = matchMedia('(hover: none)').matches;
 
   const backend: Backend =
     createWorkerBackend(canvas, waveOpts, boost, fps, dpr, drift) ?? createMainThreadBackend(canvas, waveOpts, boost, fps, dpr, drift);
