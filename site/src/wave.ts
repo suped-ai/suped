@@ -49,7 +49,13 @@ export function mountWave(target: string | HTMLElement, opts: MountOptions = {})
   const dpr = Math.min(window.devicePixelRatio || 1, maxDpr);
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
 
-  let backend: Backend = createWorkerBackend(canvas, waveOpts, boost, fps, dpr) ?? createMainThreadBackend(canvas, waveOpts, boost, fps, dpr);
+  // No hover pointer (phones, tablets): the vortex would park at the center
+  // forever, so let it wander slowly instead. A real pointer takes over on
+  // the first mousemove.
+  const drift = matchMedia('(hover: none)').matches;
+
+  const backend: Backend =
+    createWorkerBackend(canvas, waveOpts, boost, fps, dpr, drift) ?? createMainThreadBackend(canvas, waveOpts, boost, fps, dpr, drift);
 
   const size = () => {
     const r = host.getBoundingClientRect();
@@ -82,7 +88,7 @@ export function mountWave(target: string | HTMLElement, opts: MountOptions = {})
   };
 }
 
-function createWorkerBackend(canvas: HTMLCanvasElement, opts: WaveBackgroundOptions, boost: number, fps: number, dpr: number): Backend | null {
+function createWorkerBackend(canvas: HTMLCanvasElement, opts: WaveBackgroundOptions, boost: number, fps: number, dpr: number, drift: boolean): Backend | null {
   if (typeof Worker === 'undefined' || typeof canvas.transferControlToOffscreen !== 'function') return null;
   let worker: Worker;
   let offscreen: OffscreenCanvas;
@@ -92,7 +98,7 @@ function createWorkerBackend(canvas: HTMLCanvasElement, opts: WaveBackgroundOpti
   } catch {
     return null;
   }
-  worker.postMessage({ type: 'init', canvas: offscreen, opts, boost, fps, dpr }, [offscreen]);
+  worker.postMessage({ type: 'init', canvas: offscreen, opts, boost, fps, dpr, drift }, [offscreen]);
   const post = (m: object) => worker.postMessage(m);
   return {
     resize: (width, height) => post({ type: 'resize', width, height }),
@@ -104,11 +110,12 @@ function createWorkerBackend(canvas: HTMLCanvasElement, opts: WaveBackgroundOpti
   };
 }
 
-function createMainThreadBackend(canvas: HTMLCanvasElement, opts: WaveBackgroundOptions, boost: number, fps: number, dpr: number): Backend {
+function createMainThreadBackend(canvas: HTMLCanvasElement, opts: WaveBackgroundOptions, boost: number, fps: number, dpr: number, drift: boolean): Backend {
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('mountWave: 2d context unavailable');
   const rawMouse = { x: 0.5, y: 0.5 };
   const mouse = { x: 0.5, y: 0.5 };
+  let pointerSeen = false;
   let width = 0;
   let height = 0;
   let time = 0;
@@ -131,9 +138,13 @@ function createMainThreadBackend(canvas: HTMLCanvasElement, opts: WaveBackground
     const dt = now - last;
     if (dt < minFrameMs) return;
     last = now;
+    time += Math.min(dt, 100) / 1000;
+    if (drift && !pointerSeen) {
+      rawMouse.x = 0.5 + 0.38 * Math.sin(time * 0.21);
+      rawMouse.y = 0.5 + 0.3 * Math.sin(time * 0.16 + 1.3);
+    }
     mouse.x += 0.12 * (rawMouse.x - mouse.x);
     mouse.y += 0.12 * (rawMouse.y - mouse.y);
-    time += Math.min(dt, 100) / 1000;
     draw();
   };
   const stop = () => {
@@ -149,6 +160,7 @@ function createMainThreadBackend(canvas: HTMLCanvasElement, opts: WaveBackground
       if (!running) draw();
     },
     mouse(x, y) {
+      pointerSeen = true;
       rawMouse.x = x;
       rawMouse.y = y;
     },

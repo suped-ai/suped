@@ -4,7 +4,7 @@
 
 import { renderWaveBackground, type WaveBackgroundOptions } from 'asciify-engine';
 
-type Init = { type: 'init'; canvas: OffscreenCanvas; opts: WaveBackgroundOptions; boost: number; fps: number; dpr: number };
+type Init = { type: 'init'; canvas: OffscreenCanvas; opts: WaveBackgroundOptions; boost: number; fps: number; dpr: number; drift: boolean };
 type Msg =
   | Init
   | { type: 'resize'; width: number; height: number }
@@ -25,8 +25,15 @@ let time = 0;
 let last = 0;
 let running = false;
 let timer: ReturnType<typeof setTimeout> | undefined;
+let drift = false; // no pointer on this device: wander the vortex instead of parking it
+let pointerSeen = false;
 const rawMouse = { x: 0.5, y: 0.5 };
 const mouse = { x: 0.5, y: 0.5 };
+
+function wander(t: number) {
+  rawMouse.x = 0.5 + 0.38 * Math.sin(t * 0.21);
+  rawMouse.y = 0.5 + 0.3 * Math.sin(t * 0.16 + 1.3);
+}
 
 function draw() {
   if (!ctx || !canvas || width === 0 || height === 0) return;
@@ -44,9 +51,10 @@ function tick() {
   const now = performance.now();
   const dt = now - last;
   last = now;
+  time += Math.min(dt, 100) / 1000;
+  if (drift && !pointerSeen) wander(time);
   mouse.x += 0.12 * (rawMouse.x - mouse.x);
   mouse.y += 0.12 * (rawMouse.y - mouse.y);
-  time += Math.min(dt, 100) / 1000;
   draw();
   timer = setTimeout(tick, 1000 / fps);
 }
@@ -73,6 +81,7 @@ self.onmessage = (e: MessageEvent<Msg>) => {
       boost = m.boost;
       fps = m.fps;
       dpr = m.dpr;
+      drift = m.drift;
       break;
     case 'resize':
       width = m.width;
@@ -84,6 +93,7 @@ self.onmessage = (e: MessageEvent<Msg>) => {
       if (!running) draw();
       break;
     case 'mouse':
+      pointerSeen = true;
       rawMouse.x = m.x;
       rawMouse.y = m.y;
       break;
