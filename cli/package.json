@@ -1,0 +1,41 @@
+{
+  "name": "suped",
+  "version": "0.1.0",
+  "description": "Give the agent a computer. A persistent Linux workspace you can hot-swap agents into.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "suped": "bin/suped.js"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "docker",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "homepage": "https://suped.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/suped-ai/suped.git"
+  },
+  "bugs": {
+    "url": "https://github.com/suped-ai/suped/issues"
+  },
+  "keywords": [
+    "agent",
+    "ai",
+    "docker",
+    "workspace",
+    "sandbox",
+    "persistent",
+    "linux",
+    "computer"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

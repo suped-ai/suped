@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="description" content="npx suped@latest" />
+    <title>suped</title>
+    <style>
+      :root {
+        --bg: #050505;
+        --fg: #8a8f9c;
+        --fg-hover: #c3c8d6;
+        --dim: #4a4e59;
+        --faint: #34373f;
+        --accent: #9fb0ff;
+        --mono: ui-monospace, "JetBrains Mono", "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
+        --size: 0.85rem;
+      }
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background: var(--bg);
+        overflow: hidden;
+      }
+      #hero {
+        position: fixed;
+        inset: 0;
+        width: 100vw;
+        height: 100vh;
+      }
+
+      /* ---------- install line ---------- */
+      #install {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        z-index: 1;
+        pointer-events: none;
+      }
+      #cmd {
+        pointer-events: auto;
+        appearance: none;
+        margin: 0;
+        padding: 0.9em 1.6em;
+        cursor: pointer;
+        position: relative;
+        font-family: var(--mono);
+        font-size: var(--size);
+        letter-spacing: 0.04em;
+        line-height: 1.4;
+        color: var(--fg);
+        white-space: nowrap;
+        border: 1px solid rgba(138, 143, 156, 0.18);
+        /* a full pill would be ~1.6em (half the height); this sits about halfway there */
+        border-radius: 0.8em;
+        background: rgba(5, 5, 5, 0.55);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        transition: color 0.6s ease, border-color 0.6s ease;
+      }
+      #cmd:hover, #cmd:focus-visible {
+        color: var(--fg-hover);
+        border-color: rgba(138, 143, 156, 0.32);
+        outline: 0;
+      }
+      .prompt {
+        color: var(--dim);
+        margin-right: 0.6em;
+        transition: color 0.4s ease;
+      }
+      #cmd.copied .prompt { color: var(--accent); }
+      .cursor {
+        display: inline-block;
+        width: 0.55em;
+        height: 1.05em;
+        margin-left: 0.3em;
+        vertical-align: text-bottom;
+        background: currentColor;
+        opacity: 0.6;
+        animation: blink 1.6s steps(1, end) infinite;
+      }
+      @keyframes blink { 0%, 50% { opacity: 0.6; } 50.01%, 100% { opacity: 0; } }
+
+      /* ---------- footer links ---------- */
+      #links {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 1.4rem;
+        z-index: 1;
+        display: flex;
+        justify-content: center;
+        gap: 2.2rem;
+        font-family: var(--mono);
+        font-size: 0.7rem;
+        letter-spacing: 0.12em;
+        pointer-events: none;
+      }
+      #links a {
+        pointer-events: auto;
+        color: var(--faint);
+        text-decoration: none;
+        padding: 0.4em 0.2em;
+        transition: color 0.5s ease;
+      }
+      #links a:hover, #links a:focus-visible {
+        color: var(--fg);
+        outline: 0;
+      }
+      #links a::before {
+        content: "/";
+        color: var(--faint);
+        margin-right: 0.4em;
+        opacity: 0.7;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .cursor { animation: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="hero"></div>
+    <div id="install">
+      <button type="button" id="cmd" aria-label="Copy install command">
+        <span class="prompt" aria-hidden="true">$</span><span class="text">npx suped@latest</span><span class="cursor" aria-hidden="true"></span>
+      </button>
+    </div>
+    <nav id="links" aria-label="Links">
+      <a href="https://github.com/suped-ai/suped" rel="noopener">github</a>
+      <a href="https://suped.dev">docs</a>
+    </nav>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
