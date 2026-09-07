@@ -7,11 +7,9 @@ mountWave('#hero', {
   mouseInfluence: 0.4,
   accentThreshold: 0.35,
   // keep in sync with suped.dev (src/layouts/Base.astro): same wave, same feel; src/wave*.ts are copies of suped.dev/src/scripts/wave*.ts
-  boost: 1,
-  opacity: 0.5,
+  boost: 2,
+  opacity: 0.75,
   lightMode: false,
-  // phones: a tenth of the cells, so spend it on brightness
-  touch: { opacity: 0.75, boost: 2 },
 });
 
 const cmd = document.querySelector<HTMLButtonElement>('#cmd');
