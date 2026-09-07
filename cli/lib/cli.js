@@ -1,6 +1,6 @@
 import * as computer from './computer.js';
 
-const HELP = `suped ${computer.VERSION} — give the agent a computer
+const HELP = `suped ${computer.VERSION} — lose the harness. let it cook.
 
 usage
   suped                    open a shell in your computer (creates it on first run)

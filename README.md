@@ -1,6 +1,9 @@
 # suped
 
-Give the agent a computer.
+Lose the harness. Let it cook.
+
+A persistent Linux computer where any model can use real tools, run real
+software, and produce real work.
 
 | Directory | What it is |
 |---|---|

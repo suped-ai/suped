@@ -1,7 +1,7 @@
 {
   "name": "suped",
   "version": "0.1.0",
-  "description": "Give the agent a computer. A persistent Linux workspace you can hot-swap agents into.",
+  "description": "Lose the harness. Let it cook. A persistent Linux computer where any model can use real tools, run real software, and produce real work.",
   "license": "MIT",
   "type": "module",
   "bin": {

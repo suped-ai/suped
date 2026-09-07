@@ -1,21 +1,28 @@
 # suped
 
-Give the agent a computer.
+Lose the harness. Let it cook.
 
 ```
 npx suped@latest
 ```
 
-That opens a shell in a persistent Linux computer. Everything under `/home/suped`
+That opens a shell in a persistent Linux computer where any model can use real
+tools, run real software, and produce real work. Everything under `/home/suped`
 survives: what you install, clone, configure, and authenticate is still there
 next time, for you or for whatever agent you hand the keys to.
 
 ## The premise
 
 AI is remarkably capable. We keep surrounding it with abstractions designed for
-weaker models: personas, instruction files, harnesses, skill packs.
+weaker models.
 
-suped starts simpler. A real computer, a clear objective, and nothing in the way.
+- No restrictive tool registry
+- No predetermined workflows
+- No skill ceremony
+- No vendor-owned environment
+- No guessing what the agent might need
+
+Give it real tools and get out of the way.
 
 ```
 You are operating a persistent Linux computer on behalf of the user.
