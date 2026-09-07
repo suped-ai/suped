@@ -29,7 +29,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
 
 # Playwright + Chromium, installed system-wide so any project can use them
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
-RUN npm install -g playwright \
+RUN npm install -g playwright@1.63.0 \
     && playwright install --with-deps chromium \
     && chmod -R a+rX /opt/playwright \
     && rm -rf /var/lib/apt/lists/* /root/.npm

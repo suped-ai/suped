@@ -1,0 +1,79 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  cli:
+    name: cli (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [18, 20, 22]
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm test
+      - run: node bin/suped.js --help
+      - run: node bin/suped.js prompt
+      - run: npm pack --dry-run
+
+  site:
+    name: site (suped.ai)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run build
+
+  computer:
+    name: computer (image + end-to-end)
+    runs-on: ubuntu-latest
+    env:
+      SUPED_IMAGE: suped-computer:ci
+      SUPED_CONTAINER: suped-ci
+      SUPED_VOLUME: suped-ci-home
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: build image
+        run: docker build -t "$SUPED_IMAGE" cli/docker
+      - name: tools present
+        run: |
+          docker run --rm "$SUPED_IMAGE" bash -lc '
+            set -e
+            node -v; python3 --version; git --version; jq --version; sqlite3 --version
+            ffmpeg -version | head -1; rg --version | head -1; uv --version; playwright --version
+            test -f /etc/suped/prompt.md
+            sudo -n true
+          '
+      - name: up, persist across reset, destroy
+        run: |
+          set -e
+          S="node cli/bin/suped.js"
+          $S up
+          $S status
+          $S exec 'echo survived > ~/workspace/persist.txt'
+          $S reset
+          $S exec 'test "$(cat ~/workspace/persist.txt)" = survived'
+          $S exec 'NODE_PATH="$(npm root -g)" node -e "require(\"playwright\").chromium.launch().then(b=>b.close()).then(()=>console.log(\"chromium ok\"))"'
+          $S stop
+          $S destroy --yes
