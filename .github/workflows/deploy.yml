@@ -47,4 +47,4 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: site
-          command: pages deploy dist --project-name suped-ai --branch main
+          command: pages deploy dist --project-name suped --branch main
