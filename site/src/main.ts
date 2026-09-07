@@ -6,7 +6,9 @@ mountWave('#hero', {
   fontSize: 20,
   mouseInfluence: 0.4,
   accentThreshold: 0.35,
-  boost: 2,
+  // keep in sync with suped.dev (src/layouts/Base.astro): same wave, same feel
+  boost: 1,
+  opacity: 0.5,
   lightMode: false,
 });
 
