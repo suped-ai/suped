@@ -1,4 +1,4 @@
-import { mountWave } from './background';
+import { mountWave } from './wave';
 
 mountWave('#hero', {
   speed: 2.1,
@@ -6,7 +6,7 @@ mountWave('#hero', {
   fontSize: 20,
   mouseInfluence: 0.4,
   accentThreshold: 0.35,
-  // keep in sync with suped.dev (src/layouts/Base.astro): same wave, same feel
+  // keep in sync with suped.dev (src/layouts/Base.astro): same wave, same feel; src/wave*.ts are copies of suped.dev/src/scripts/wave*.ts
   boost: 1,
   opacity: 0.5,
   lightMode: false,
