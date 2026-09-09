@@ -88,6 +88,7 @@ function executeRecipe(tool, { fail = 'curl', arch = 'x86_64', prefix } = {}) {
   const shims = ['mkdir', 'rm', 'curl', 'sha256sum', 'tar', 'install', 'npm', 'ln', 'mv'].map((command) => `
 ${command}() {
   printf 'CALLED:${command} %s\\n' "$*" >&2
+  ${command === 'sha256sum' ? 'command cat >/dev/null # Drain the checksum pipe before returning, like the real verifier.' : ''}
   ${command === fail ? 'return 23' : 'return 0'}
 }`).join('\n');
   const script = `

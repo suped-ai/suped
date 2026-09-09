@@ -1,7 +1,7 @@
 // Explicit, isolated Docker integration check. Never uses the default computer.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { chmodSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,6 +39,10 @@ function cli(args, { input, expected = 0, timeout = 15 * 60 * 1000 } = {}) {
 
 const probeDir = mkdtempSync(join(tmpdir(), 'suped-check-'));
 writeFileSync(join(probeDir, 'input.txt'), 'host mount survived\n');
+// mkdtemp defaults to 0700. The container's user may differ from the host's,
+// so this non-sensitive bind-mount fixture must be readable by either user.
+chmodSync(probeDir, 0o755);
+chmodSync(join(probeDir, 'input.txt'), 0o644);
 try {
   cli(['-p', '127.0.0.1::3000', '-v', `${probeDir}:/home/suped/test-mount:ro`, 'up']);
   assert.match(cli(['exec', 'node', '--version']), /^v\d+/);

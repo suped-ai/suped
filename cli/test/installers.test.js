@@ -46,7 +46,8 @@ mkdir() { command node -e 'for(const dir of process.argv.slice(1).filter(arg=>ar
 mktemp() { command node -e 'const template=process.argv.at(-1);process.stdout.write(require("node:fs").mkdtempSync(template.replace(/X+$/,"")))' -- "$@"; }
 uname() { printf '%s\\n' ${shellQuote(arch)}; }
 curl() { printf 'CALLED:curl %s\\n' "$*" >&2; ${fail === 'curl' ? 'return 23' : 'return 0'}; }
-sha256sum() { printf 'CALLED:sha256sum\\n' >&2; ${fail === 'sha256sum' ? 'return 23' : 'return 0'}; }
+# Drain the checksum pipe so the shim cannot cause printf to fail with SIGPIPE.
+sha256sum() { printf 'CALLED:sha256sum\\n' >&2; command cat >/dev/null; ${fail === 'sha256sum' ? 'return 23' : 'return 0'}; }
 write_fake_executable() {
   printf '%s\\n' '#!/bin/bash' ${shellQuote(`printf '%s\\n' '${executableVersion}'`)} > "$1"
   chmod +x "$1"
