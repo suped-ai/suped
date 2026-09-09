@@ -46,6 +46,10 @@ RUN userdel -r ubuntu 2>/dev/null || true \
 USER suped
 WORKDIR /home/suped
 
+# Tools selected during setup install in the persistent home. Keep them on
+# PATH for shells, direct Docker exec, and agent processes alike.
+ENV PATH="/home/suped/.local/bin:${PATH}"
+
 # Home skeleton. Docker copies this into the named volume on first mount,
 # so it persists and grows with whatever you do afterwards.
 RUN mkdir -p workspace projects downloads .config .local/bin \

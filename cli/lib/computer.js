@@ -16,19 +16,23 @@ export const WORKDIR = `${HOME}/workspace`;
 export const USER = 'suped';
 
 const DOCKER_DIR = fileURLToPath(new URL('../docker/', import.meta.url));
+const RUN_ARGS_LABEL = 'dev.suped.run-args';
 
 export function systemPrompt() {
   return readFileSync(new URL('../docker/prompt.md', import.meta.url), 'utf8').trim();
 }
 
-function docker(args, { inherit = false, tty = false } = {}) {
+function docker(args, { inherit = false, tty = false, input, trim = true } = {}) {
   const r = spawnSync('docker', args, {
     encoding: 'utf8',
-    stdio: inherit ? 'inherit' : ['ignore', 'pipe', 'pipe'],
+    stdio: inherit ? 'inherit' : [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+    input,
+    maxBuffer: 16 * 1024 * 1024,
     windowsHide: !tty,
   });
   if (r.error) throw r.error;
-  return { status: r.status ?? 1, stdout: (r.stdout ?? '').trim(), stderr: (r.stderr ?? '').trim() };
+  const output = (value) => trim ? (value ?? '').trim() : (value ?? '');
+  return { status: r.status ?? 1, stdout: output(r.stdout), stderr: output(r.stderr) };
 }
 
 export function hasDocker() {
@@ -71,6 +75,41 @@ export function containerImage(name = CONTAINER) {
   return r.status === 0 ? r.stdout : null;
 }
 
+/** Recover the original CLI options, including computers created before labels. */
+export function containerRunArgs(name = CONTAINER) {
+  const r = docker(['container', 'inspect', name]);
+  if (r.status !== 0) throw new Error(`could not inspect container ${name}: ${r.stderr}`);
+  const [config] = JSON.parse(r.stdout);
+  const saved = config.Config?.Labels?.[RUN_ARGS_LABEL];
+  if (saved !== undefined) {
+    const args = JSON.parse(saved);
+    if (!Array.isArray(args) || args.length % 2 !== 0 || args.some((arg, i) =>
+      typeof arg !== 'string' || (i % 2 === 0 && arg !== '-p' && arg !== '-v'))) {
+      throw new Error('container has invalid saved port/mount settings');
+    }
+    return args;
+  }
+  const args = [];
+  for (const bind of config.HostConfig?.Binds ?? []) {
+    // Splitting from the right also handles a Windows drive letter in the source.
+    const parts = bind.split(':');
+    const destination = parts.at(-1).startsWith('/') ? parts.at(-1) : parts.at(-2);
+    if (destination !== HOME) args.push('-v', bind);
+  }
+  for (const [port, bindings] of Object.entries(config.HostConfig?.PortBindings ?? {})) {
+    for (const { HostIp = '', HostPort = '' } of bindings ?? []) {
+      const host = HostIp.includes(':') ? `[${HostIp}]` : HostIp;
+      args.push('-p', `${host ? `${host}:` : ''}${HostPort}:${port}`);
+    }
+  }
+  return args;
+}
+
+function mergeRunArgs(saved, supplied) {
+  const replaced = new Set(supplied.filter((_, index) => index % 2 === 0));
+  return saved.filter((_, index) => !replaced.has(saved[index - index % 2])).concat(supplied);
+}
+
 /**
  * Create the container (does not attach). `runArgs` are extra `docker run`
  * flags, e.g. ['-p', '3000:3000', '-v', 'C:/data:/home/suped/data'].
@@ -82,6 +121,7 @@ export function createContainer({ image = IMAGE, name = CONTAINER, volume = VOLU
     '--hostname', 'suped',
     '--init',
     '--restart', 'unless-stopped',
+    '--label', `${RUN_ARGS_LABEL}=${JSON.stringify(runArgs)}`,
     '-v', `${volume}:${HOME}`,
     '-w', WORKDIR,
     ...runArgs,
@@ -141,16 +181,31 @@ export function ensureUp({ runArgs = [], log = () => {} } = {}) {
     createContainer({ runArgs });
     created = true;
   } else {
+    if (runArgs.length) log('port/mount options were ignored because the computer already exists; use "suped reset" with those options to apply them');
     if (state !== 'running') startContainer();
     stale = containerImage() !== IMAGE;
   }
   return { created, built, stale };
 }
 
-function execArgs(interactive) {
+/** Prepare the replacement before removing the computer; retain its connections. */
+export function resetComputer({ runArgs = [], rebuild = false, noCache = false, log = () => {} } = {}) {
+  if (!hasDocker()) throw new Error('Docker is not available. Make sure the daemon is running.');
+  const state = containerState();
+  const retainedArgs = mergeRunArgs(state === null ? [] : containerRunArgs(), runArgs);
+  if (rebuild || !imageExists()) {
+    log(`${rebuild ? 'rebuilding' : 'building'} ${IMAGE}`);
+    buildImage(IMAGE, { noCache });
+  }
+  if (!volumeExists()) createVolume();
+  if (state !== null) removeContainer();
+  createContainer({ runArgs: retainedArgs });
+}
+
+function execArgs({ interactive = false, stdin = true } = {}) {
   const args = ['exec'];
   if (interactive) args.push('-it');
-  else if (process.stdin.isTTY === false) args.push('-i');
+  else if (stdin) args.push('-i');
   args.push('-u', USER, '-w', WORKDIR);
   if (process.env.TERM) args.push('-e', `TERM=${process.env.TERM}`);
   args.push(CONTAINER);
@@ -159,24 +214,40 @@ function execArgs(interactive) {
 
 /** Attach an interactive login shell. Returns the shell's exit status. */
 export function shell() {
-  return docker([...execArgs(true), 'bash', '-l'], { inherit: true, tty: true }).status;
+  const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  return docker([...execArgs({ interactive }), 'bash', '-l'], { inherit: true, tty: interactive }).status;
 }
 
-/** Run a shell command line inside the computer. Returns exit status. */
-export function exec(commandLine) {
+function commandArgs(command) {
+  if (typeof command === 'string') return ['bash', '-lc', command];
+  if (!Array.isArray(command) || command.length === 0 || command.some((arg) => typeof arg !== 'string')) {
+    throw new Error('command must be a shell command string or a nonempty array of arguments');
+  }
+  // Login shell setup still runs, while positional parameters preserve every argv byte.
+  return ['bash', '-lc', 'exec "$@"', 'suped-exec', ...command];
+}
+
+/** Run a shell string or exact argv inside the computer. Returns exit status. */
+export function exec(command) {
   const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
-  return docker([...execArgs(interactive), 'bash', '-lc', commandLine], { inherit: true, tty: interactive }).status;
+  return docker([...execArgs({ interactive }), ...commandArgs(command)], { inherit: true, tty: interactive }).status;
+}
+
+/** Capture raw output without a TTY; input is delivered through stdin, never shell text. */
+export function capture(command, { input } = {}) {
+  return docker([...execArgs({ stdin: input !== undefined }), ...commandArgs(command)], { input, trim: false });
 }
 
 export function status() {
+  const available = hasDocker();
   return {
-    docker: hasDocker(),
+    docker: available,
     image: IMAGE,
-    imageExists: imageExists(),
+    imageExists: available ? imageExists() : null,
     volume: VOLUME,
-    volumeExists: volumeExists(),
+    volumeExists: available ? volumeExists() : null,
     container: CONTAINER,
-    state: containerState(),
-    containerImage: containerImage(),
+    state: available ? containerState() : null,
+    containerImage: available ? containerImage() : null,
   };
 }

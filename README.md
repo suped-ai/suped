@@ -1,9 +1,9 @@
 # suped
 
-**Lose the harness. Let it cook.**
+**A suped-up workspace for agents.**
 
-A persistent Linux computer where any model can use real tools, run real
-software, and produce real work.
+Choose the tools you work with. Connect your accounts. Hand your agent a
+Linux workspace where those tools are installed, signed in, and ready to use.
 
 ```sh
 npx suped@latest
@@ -13,127 +13,179 @@ npx suped@latest
 [![npm](https://img.shields.io/npm/v/suped)](https://www.npmjs.com/package/suped)
 [![license](https://img.shields.io/badge/license-MIT-9fb0ff)](LICENSE)
 
-That command opens a shell in a container with a home directory that survives.
-What you install, clone, configure, and log in to is still there next time,
-for you or for whatever agent you hand the keys to. Nothing agent-facing sits
-on top of it. No harness, no orchestrator, no persona, no memory system.
+Version 0.2.0 includes guided setup, 17 optional CLIs, and nine official MCP
+connections. The examples below use a global installation (`npm i -g suped`);
+you can use `npx suped@latest` in place of `suped` without installing globally.
 
-Docs and the full story: **https://suped.dev**
+## Set up your workspace
 
-## The premise
+You need Docker Desktop or Engine running Linux containers, and Node 18+ on
+your computer. The first run builds the base image locally and takes a few
+minutes. Later runs reuse it.
 
-AI is remarkably capable. We keep surrounding it with abstractions designed for
-weaker models.
+On your first interactive run, choose websites and apps, data and services,
+individual tools, or the base workspace. Guided choices let you pick providers
+in each category. Suped installs only your selections into the persistent home
+and helps you connect them. You can connect an account later.
 
-- No restrictive tool registry
-- No predetermined workflows
-- No skill ceremony
-- No vendor-owned environment
-- No guessing what the agent might need
+| Category | Choices | What your agent can use them for |
+|---|---|---|
+| Repositories | GitHub, GitLab | Repos, issues, reviews, and Git authentication |
+| Hosting | Cloudflare, Vercel, Netlify, Railway, Fly.io, Render | Apps, previews, deployments, and logs |
+| Databases | Supabase, Neon, Turso, PlanetScale | Projects, databases, branches, and migrations |
+| Cloud | Firebase, DigitalOcean | App services and infrastructure |
+| Payments | Stripe | Payment integration and webhook development |
+| Agents | Codex, Claude Code | Run your chosen agent beside the tools |
 
-Give it real tools and get out of the way. The abstractions go on the human
-side. The agent gets a computer.
-
-This is the entire system prompt. `suped prompt` prints it.
-
+```sh
+suped setup                         # choose tools and connect accounts
+suped catalog                       # browse choices without starting Docker
+suped setup gitlab vercel neon       # choose an alternative app stack
+suped setup stripe codex --skip-auth # install now, connect later
+suped login neon
+suped tools gitlab vercel neon       # check this stack's account access
 ```
-You are operating a persistent Linux computer on behalf of the user.
 
-You have access to the shell, filesystem, installed applications, and
-explicitly connected services.
+Suped uses the provider CLIs for login. Credentials stay in their normal
+locations under `/home/suped`; Suped stores only your tool selections. Logins
+can expire or be revoked. `suped login <tool>` reconnects them. Neon uses a
+hidden API-key prompt piped to its native CLI. Turso prints a manual connection
+step; it is not connected until that step is complete and verified.
 
-Use the computer to accomplish the user's objective. Inspect the environment,
-install dependencies when appropriate, write scripts, use APIs and CLIs, and
-preserve useful work in the filesystem.
+Official MCP connections add services such as Notion, Linear, Figma, and Sentry
+to the agent client you choose. Registration and account authorization are
+separate; existing client configuration is preserved.
 
-Ask the user only when you need information, authentication, or approval for
-a consequential action.
+```sh
+suped mcp list
+suped setup claude --skip-auth
+suped mcp add notion linear --client claude
+suped exec claude mcp login notion --no-browser
 ```
+
+See [the tool catalogue](https://suped.dev/docs/tools) and
+[MCP setup](https://suped.dev/docs/mcp) for all choices and headless login steps.
+
+Supabase's hosted commands are available here. Its local database stack needs
+a Docker daemon inside or reachable from the workspace; Suped does not mount
+your host's Docker socket or set up that local stack.
+
+## Upgrade an existing workspace
+
+Run `npx suped@latest reset` to build the current image and recreate your
+container, then `npx suped@latest setup` to choose tools. Use the same
+`SUPED_CONTAINER` and `SUPED_VOLUME` settings if you customized them. Your
+home, selected tools, saved logins, ports, and mounts are retained. Processes
+stop during recreation, and system packages installed with apt after the
+image was built need to be reinstalled. Opening an older workspace first
+keeps it running and prints a reminder to reset.
+
+## Give the agent work
+
+Select Codex or Claude Code during setup, install another agent CLI, or connect an external
+agent's shell execution to `suped exec`. Suped supplies the workspace; bring
+the agent you want to use.
+
+Once GitHub and Cloudflare are connected, an objective can be:
+
+> Build a blog for my photography projects. Create a GitHub repository,
+> commit and push the source, create a Cloudflare Pages project, and deploy
+> the site. Save the source here and give me the repository and live URLs.
+
+The agent uses `git`, `gh`, `wrangler`, and ordinary files. What it can access
+depends on the accounts and permissions you connected.
+
+```sh
+suped exec gh auth status
+suped exec wrangler whoami
+suped exec 'cd ~/projects/my-blog && git status'
+```
+
+`suped prompt` prints a short operating brief, also available inside the box
+at `/etc/suped/prompt.md`. Add your objective. There is no required persona,
+workflow format, or agent framework.
 
 ## What's on the box
 
-Ubuntu 24.04 with bash, python3, node 22, git, curl, wget, jq, sqlite3, ffmpeg,
-ripgrep, unzip, build-essential, tmux, vim, uv, and Playwright with Chromium.
-The `suped` user has passwordless sudo. If you need more, install it.
+Ubuntu 24.04 with bash, Python, Node, git, curl, wget, jq, sqlite3, ffmpeg,
+ripgrep, unzip, build-essential, tmux, editors, uv, and Playwright/Chromium.
+The `suped` user has passwordless sudo. Add whatever else your work needs.
 
-```
+```text
 /home/suped/
-  workspace/    where shells open
+  workspace/    where shells and exec commands start
   projects/
   downloads/
-  .config/
+  .local/       selected CLIs and user-installed tools
+  .config/      tool settings and workspace setup
 ```
 
-Everything under `/home/suped` is a Docker named volume and survives stops,
-restarts, and CLI upgrades. See [Persistence](https://suped.dev/docs/persistence)
-for exactly what survives what.
+The home is a Docker named volume. Files, selected CLIs, and saved logins
+survive stops, restarts, reset, and rebuild. Additional system packages
+installed with `apt` survive stops but are lost on reset/rebuild. Shared
+files let another agent pick up saved work; save any context it will need.
 
 ## Commands
 
-```
-suped                    open a shell (creates the computer on first run)
-suped up                 start without attaching
-suped exec <command...>  run a command inside
-suped status
-suped stop               stop it; home is kept
-suped reset              recreate the container from the current image; home is kept
-suped rebuild            rebuild the image, then reset
-suped destroy --yes      remove the container AND the persistent home
-suped prompt             print the system prompt
+```text
+suped                    set up if needed, then open a shell
+suped up                 set up if needed, then leave the workspace running
+suped catalog            browse available CLIs by category
+suped setup [tools...]   install tools and connect accounts
+suped tools [tools...]   check tools and connections
+suped login <tools...>   connect or reconnect accounts
+suped mcp list           browse official remote MCP connections
+suped mcp add <ids...> --client codex|claude   register connections in a client
+suped mcp export <ids...> --client codex|claude|cursor   print config to merge
+suped exec <command...>  run an exact program/arguments, or one quoted shell command
+suped status             show Docker/container/image/volume state
+suped stop               stop the computer; keep its files
+suped reset              recreate the container; keep home, ports, and mounts
+suped rebuild            rebuild the base image, then reset
+suped destroy --yes      remove the container AND its home volume
+suped prompt             print the operating brief
 ```
 
-Ports and extra mounts are plain `docker run` flags, set when the container is
-first created:
+First-run setup appears only in an interactive terminal. `exec` never launches
+setup. For unattended installation, specify tools and `--skip-auth`.
+
+Ports and extra mounts are configured at creation:
 
 ```sh
-npx suped@latest -p 3000:3000 -v ~/data:/home/suped/data
+suped -p 3000:3000 -v ~/data:/home/suped/data
+suped reset -p 8080:8080
 ```
 
-Full reference: [Commands](https://suped.dev/docs/commands).
-
-## Requirements
-
-Docker (Desktop or Engine) and Node 18 or newer. The first run builds the image
-locally from the Dockerfile in this repo, which takes a few minutes. After that
-it's instant.
+Reset/rebuild retain the existing ports and mounts. Supplying `-p` replaces
+the port list; `-v` replaces the extra-mount list. For `exec`, put Suped's
+options before the command: `suped -p 3000:3000 exec node --version`.
 
 ## This repository
 
 | Directory | What it is |
 |---|---|
-| [`cli/`](cli/) | The `suped` npm package. Zero dependencies. [Changelog](cli/CHANGELOG.md). |
-| [`cli/docker/`](cli/docker/) | The Dockerfile for the computer and the system prompt. |
-| [`site/`](site/) | [suped.ai](https://suped.ai), the one-page homepage. |
-| [`brand/`](brand/) | The logo. Used sparingly. |
+| `cli/` | The zero-dependency `suped` npm package |
+| `cli/docker/` | Base image and operating brief |
+| `site/` | The single-command install page at [suped.ai](https://suped.ai) |
+| `brand/` | Brand assets |
 
-The docs site is a separate repo: [suped-ai/suped.dev](https://github.com/suped-ai/suped.dev).
-
-## Working on it
+The docs and product site live separately at [suped.dev](https://suped.dev),
+in [suped-ai/suped.dev](https://github.com/suped-ai/suped.dev).
 
 ```sh
-# cli: unit tests need no Docker; the CLI itself talks to your local Docker
-cd cli && npm test
+cd cli
+npm test
 node bin/suped.js --help
-
-# homepage
-cd site && npm install && npm run dev
 ```
 
-CI runs the CLI tests on Node 18, 20, and 22, builds the homepage, builds the
-image, and drives the CLI end to end against it. See
-[CONTRIBUTING.md](CONTRIBUTING.md) for the layout, the ground rule about what
-suped will and won't accept, and the release process.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development and release instructions.
 
 ## Where this goes
 
-suped is built in two phases, in a fixed order. First, the agent's computer:
-this repo, refined until an agent dropped into the box gets more done with
-less friction than anywhere else. Second, the human layer on top of it: the
-abstractions people need to work alongside their agent, and a workspace that
-follows you to any machine. The agent never sees the second layer.
-
-[Read the manifesto](https://suped.dev/docs/manifesto) ·
-[Where this goes](https://suped.dev/docs/where-this-goes)
+First, make the CLI a dependable way to prepare a workspace for your agent:
+choose software, connect accounts, and get to work. Later, a graphical setup
+will guide people through those same choices, including account creation and
+authentication. The agent continues to use the same ordinary computer.
 
 ## License
 

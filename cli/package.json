@@ -1,7 +1,7 @@
 {
   "name": "suped",
-  "version": "0.1.0",
-  "description": "Lose the harness. Let it cook. A persistent Linux computer where any model can use real tools, run real software, and produce real work.",
+  "version": "0.2.0",
+  "description": "A suped-up workspace for agents. Choose your tools, connect your accounts, and get to work.",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -36,6 +36,7 @@
     "computer"
   ],
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "test:integration": "node test/integration.js"
   }
 }

@@ -5,7 +5,15 @@ version, so an image change is a package change.
 
 ## Unreleased
 
-- Tagline is now "Lose the harness. Let it cook." in the package description, README, and help banner.
+## 0.2.0 · 2026-09-09
+
+- Guided workspace setup with 17 optional CLIs across repositories, hosting, databases, cloud, payments, and agents. Choose providers in each category; selected tools and provider logins live in the persistent home.
+- Add `catalog`, `setup`, `tools`, and `login` commands. Interactive first runs offer setup; unattended runs never prompt for authentication. Filter connection checks with `tools <ids...>`.
+- Add nine official remote MCP connections, registration for Codex and Claude Code, and config export for Codex, Claude Code, and Cursor. Existing settings are preserved; authorization stays explicit in the selected client.
+- Preserve command flags, argument boundaries, and piped input in `exec`.
+- Preserve ports and extra mounts across reset/rebuild, and prepare the replacement image before removing the container.
+- Put home-installed tools on PATH for direct commands and agent processes.
+- Reframe the docs around choosing tools, connecting accounts, and handing an agent a working environment.
 - Pin Playwright to 1.63.0 in the image so the global package and the bundled Chromium always match.
 
 ## 0.1.0 · 2026-09-07

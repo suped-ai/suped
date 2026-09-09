@@ -49,6 +49,7 @@ jobs:
       SUPED_IMAGE: suped-computer:ci
       SUPED_CONTAINER: suped-ci
       SUPED_VOLUME: suped-ci-home
+      SUPED_TEST_TOOLS: '1'
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -65,15 +66,5 @@ jobs:
             test -f /etc/suped/prompt.md
             sudo -n true
           '
-      - name: up, persist across reset, destroy
-        run: |
-          set -e
-          S="node cli/bin/suped.js"
-          $S up
-          $S status
-          $S exec 'echo survived > ~/workspace/persist.txt'
-          $S reset
-          $S exec 'test "$(cat ~/workspace/persist.txt)" = survived'
-          $S exec 'NODE_PATH="$(npm root -g)" node -e "require(\"playwright\").chromium.launch().then(b=>b.close()).then(()=>console.log(\"chromium ok\"))"'
-          $S stop
-          $S destroy --yes
+      - name: CLI, selected tools, persistence, and browser
+        run: node cli/test/integration.js

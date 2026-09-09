@@ -13,12 +13,18 @@ https://suped.dev/docs/manifesto first; it's short.
 Changes that make the computer a better computer are very welcome: better
 defaults, missing tools, rough edges in the CLI, clearer docs.
 
+Human setup is part of the CLI: choosing software, installing it in the
+persistent home, and signing in through the provider's own CLI. Agents then
+use those ordinary tools directly. Tool selection is not an agent tool registry.
+Curated MCP setup configures an existing agent client's native connections.
+Suped does not proxy tool calls or run its own agent loop.
+
 ## Layout
 
 ```
 cli/     the npm package. Zero dependencies. Node 18+.
   bin/   entry point
-  lib/   cli.js (commands) and computer.js (everything that touches Docker)
+  lib/   commands, Docker lifecycle, setup, and optional tool/MCP catalogues
   docker/ the Dockerfile and the system prompt
   test/  node --test
 site/    suped.ai, a single Vite page
@@ -42,7 +48,23 @@ SUPED_IMAGE=suped-computer:dev SUPED_CONTAINER=suped-dev SUPED_VOLUME=suped-dev-
 ```
 
 CI runs the unit tests on Node 18, 20, and 22, builds the image, and runs the
-CLI end to end against it (up, persist across reset, Chromium launch, destroy).
+CLI end to end against it (exact arguments/stdin, selected CLI installation,
+repeat setup, reset with preserved ports/mounts, Chromium launch, and destroy).
+The integration check never signs into accounts or creates remote resources.
+
+```sh
+SUPED_IMAGE=suped-computer:dev SUPED_CONTAINER=suped-verify-dev SUPED_VOLUME=suped-verify-dev-home SUPED_TEST_TOOLS=1 npm run test:integration
+```
+
+Use fresh test names: the check refuses existing containers or home volumes.
+The integration check installs the full optional CLI catalogue. Set
+`SUPED_TEST_TOOL_IDS=gitlab,vercel,neon` to check a smaller selection locally.
+Installers in `lib/tools.js` and `lib/catalog/` pin tool versions. When adding
+or updating one, verify official release checksums, both CPU architectures,
+native login from a container, and an authenticated read-only status command.
+Then run the integration check. MCP entries need official endpoint and client
+documentation; registration must preserve existing configuration and leave
+account authorization to the client.
 
 ## Working on the homepage
 

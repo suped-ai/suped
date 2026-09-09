@@ -1,11 +1,18 @@
 import * as computer from './computer.js';
 
-const HELP = `suped ${computer.VERSION} — lose the harness. let it cook.
+const HELP = `suped ${computer.VERSION} — a suped-up workspace for agents.
 
 usage
   suped                    open a shell in your computer (creates it on first run)
   suped up                 start the computer without attaching
   suped exec <command...>  run a command inside the computer
+  suped catalog           browse optional CLIs by category (no Docker needed)
+  suped setup [tools...]   choose tools and connect your accounts
+  suped tools [tools...]   show installed tools and their authentication status
+  suped login <tools...>   authenticate selected tools again
+  suped mcp list          browse curated app connections (no Docker needed)
+  suped mcp add <ids...> --client codex|claude   configure a client's MCP servers
+  suped mcp export <ids...> --client codex|claude|cursor   print client config
   suped status             show image / volume / container state
   suped stop               stop the computer (home is kept)
   suped reset              recreate the container from the current image (home is kept, apt installs are not)
@@ -16,6 +23,11 @@ usage
 options (used when the container is first created)
   -p, --publish <host:container>   publish a port (repeatable)
   -v, --volume  <host:container>   mount an extra host path (repeatable)
+  --skip-auth                     install selected tools without signing in (setup)
+
+exec accepts one quoted shell command, or a program followed by exact arguments.
+put Suped's port/mount options before exec; everything after exec belongs to the command.
+reset/rebuild preserve ports and mounts; -p or -v replaces the corresponding list.
 
 environment
   SUPED_CONTAINER  container name   (default: ${computer.CONTAINER})
@@ -23,7 +35,7 @@ environment
   SUPED_IMAGE      image tag        (default: ${computer.IMAGE})
 
 the computer is a Linux container with a persistent /home/suped.
-everything you install, clone, configure or authenticate stays there.
+files and credentials in your home survive reset/rebuild; system package installs do not.
 `;
 
 const log = (msg) => console.error(`suped: ${msg}`);
@@ -39,12 +51,25 @@ export function parseArgs(argv) {
       rest.push(...argv.slice(i + 1));
       break;
     }
-    if (a === '-p' || a === '--publish') runArgs.push('-p', argv[++i]);
-    else if (a === '-v' || a === '--volume') runArgs.push('-v', argv[++i]);
-    else if (a.startsWith('--publish=')) runArgs.push('-p', a.slice(10));
-    else if (a.startsWith('--volume=')) runArgs.push('-v', a.slice(9));
+    if (a === '-p' || a === '--publish' || a === '-v' || a === '--volume') {
+      const value = argv[++i];
+      if (!value || value.startsWith('-')) throw new Error('missing value for -p/--publish or -v/--volume');
+      runArgs.push(a === '-p' || a === '--publish' ? '-p' : '-v', value);
+    }
+    else if (a.startsWith('--publish=') || a.startsWith('--volume=')) {
+      const value = a.slice(a.indexOf('=') + 1);
+      if (!value) throw new Error('missing value for -p/--publish or -v/--volume');
+      runArgs.push(a.startsWith('--publish=') ? '-p' : '-v', value);
+    }
     else if (a.startsWith('--') || (a.startsWith('-') && a.length === 2)) flags.add(a.replace(/^-+/, ''));
-    else rest.push(a);
+    else {
+      rest.push(a);
+      if (rest.length === 1 && (a === 'exec' || a === 'mcp')) {
+        const start = argv[i + 1] === '--' ? i + 2 : i + 1;
+        rest.push(...argv.slice(start));
+        break;
+      }
+    }
   }
   if (runArgs.includes(undefined)) throw new Error('missing value for -p/--publish or -v/--volume');
   const [command = 'shell', ...args] = rest;
@@ -53,6 +78,12 @@ export function parseArgs(argv) {
 
 function warnIfStale(stale) {
   if (stale) log(`container was created from an older image; run "suped reset" to recreate it (your home is kept)`);
+}
+
+async function firstRunSetup() {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) return 0;
+  const { setupIfNeeded } = await import('./setup.js');
+  return setupIfNeeded();
 }
 
 export async function main(argv) {
@@ -71,12 +102,16 @@ export async function main(argv) {
     case 'shell': {
       const { stale } = computer.ensureUp({ runArgs, log });
       warnIfStale(stale);
+      const setupStatus = await firstRunSetup();
+      if (setupStatus) return setupStatus;
       return computer.shell();
     }
 
     case 'up': {
       const { created, stale } = computer.ensureUp({ runArgs, log });
       warnIfStale(stale);
+      const setupStatus = await firstRunSetup();
+      if (setupStatus) return setupStatus;
       log(created ? `${computer.CONTAINER} is up (new)` : `${computer.CONTAINER} is up`);
       return 0;
     }
@@ -85,16 +120,48 @@ export async function main(argv) {
       if (args.length === 0) throw new Error('exec: nothing to run. usage: suped exec <command...>');
       const { stale } = computer.ensureUp({ runArgs, log });
       warnIfStale(stale);
-      return computer.exec(args.join(' '));
+      return computer.exec(args.length === 1 ? args[0] : args);
     }
+
+    case 'setup': {
+      if (args.length) (await import('./tools.js')).getTools(args);
+      const { stale } = computer.ensureUp({ runArgs, log });
+      warnIfStale(stale);
+      const { setup } = await import('./setup.js');
+      return setup({ tools: args.length ? args : null, authenticate: !flags.has('skip-auth') });
+    }
+
+    case 'tools': {
+      if (args.length) (await import('./tools.js')).getTools(args);
+      const { stale } = computer.ensureUp({ runArgs, log });
+      warnIfStale(stale);
+      const { showTools } = await import('./setup.js');
+      return showTools(args);
+    }
+
+    case 'login': {
+      if (args.length === 0) throw new Error('login: choose at least one tool. Run "suped catalog" for choices.');
+      (await import('./tools.js')).getTools(args);
+      const { stale } = computer.ensureUp({ runArgs, log });
+      warnIfStale(stale);
+      const { loginTools } = await import('./setup.js');
+      return loginTools(args);
+    }
+
+    case 'catalog':
+      if (args.length) throw new Error('usage: suped catalog');
+      return (await import('./tools.js')).showCatalog();
+
+    case 'mcp':
+      return (await import('./mcp.js')).mainMcp(args, { runArgs });
 
     case 'status': {
       const s = computer.status();
       const rows = [
         ['docker', s.docker ? 'available' : 'NOT AVAILABLE'],
-        ['image', `${s.image} ${s.imageExists ? '(built)' : '(not built)'}`],
-        ['home', `${s.volume} ${s.volumeExists ? '(exists)' : '(none)'}`],
-        ['container', `${s.container} ${s.state ?? '(none)'}`],
+        ['image', `${s.image} ${s.docker ? (s.imageExists ? '(built)' : '(not built)') : '(unknown)'}`],
+        ['home', `${s.volume} ${s.docker ? (s.volumeExists ? '(exists)' : '(none)') : '(unknown)'}`],
+        ['container', `${s.container} ${s.docker ? (s.state ?? '(none)') : '(unknown)'}`],
       ];
       if (s.containerImage && s.containerImage !== s.image) rows.push(['note', `container uses ${s.containerImage}; run "suped reset"`]);
       for (const [k, v] of rows) console.log(`${k.padEnd(10)} ${v}`);
@@ -113,18 +180,13 @@ export async function main(argv) {
     }
 
     case 'reset': {
-      if (computer.containerState() !== null) computer.removeContainer();
-      computer.ensureUp({ runArgs, log });
+      computer.resetComputer({ runArgs, log });
       log('container recreated; home kept');
       return 0;
     }
 
     case 'rebuild': {
-      if (!computer.hasDocker()) throw new Error('Docker is not available');
-      log(`rebuilding ${computer.IMAGE}`);
-      computer.buildImage(computer.IMAGE, { noCache: flags.has('no-cache') });
-      if (computer.containerState() !== null) computer.removeContainer();
-      computer.ensureUp({ runArgs, log });
+      computer.resetComputer({ runArgs, rebuild: true, noCache: flags.has('no-cache'), log });
       log('rebuilt; home kept');
       return 0;
     }
