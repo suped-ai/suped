@@ -92,7 +92,33 @@ function jsonOutput(result) {
   }
 }
 
-export const TOOLS = [
+/**
+ * Providers that read a credential from an environment variable. Most of the
+ * catalogue works this way -- it is how each is documented to run in CI -- so
+ * for these the variable replaces signing in rather than supplementing it, and
+ * one stored token covers every machine.
+ *
+ * Taken from provider documentation rather than verified against an account, so
+ * treat them as defaults: an entry's own `env` always wins, which means a wrong
+ * name here is corrected in one place without touching this file.
+ */
+const ENV_TOKENS = {
+  github: ['GH_TOKEN'],
+  gitlab: ['GITLAB_TOKEN'],
+  cloudflare: ['CLOUDFLARE_API_TOKEN'],
+  vercel: ['VERCEL_TOKEN'],
+  netlify: ['NETLIFY_AUTH_TOKEN'],
+  railway: ['RAILWAY_TOKEN'],
+  fly: ['FLY_API_TOKEN'],
+  render: ['RENDER_API_KEY'],
+  neon: ['NEON_API_KEY'],
+  turso: ['TURSO_API_TOKEN'],
+  supabase: ['SUPABASE_ACCESS_TOKEN'],
+  digitalocean: ['DIGITALOCEAN_ACCESS_TOKEN'],
+  stripe: ['STRIPE_API_KEY'],
+};
+
+const CATALOGUE = [
   {
     id: 'github',
     category: 'source', version: '2.100.0', docs: 'https://cli.github.com/manual/',
@@ -183,6 +209,10 @@ export const TOOLS = [
   ...SERVICE_TOOLS,
   ...AGENT_TOOLS,
 ];
+
+export const TOOLS = CATALOGUE.map((tool) => (
+  ENV_TOKENS[tool.id] ? { ...tool, secret: { ...tool.secret, env: ENV_TOKENS[tool.id] } } : tool
+));
 
 const byId = new Map(TOOLS.map((tool) => [tool.id, tool]));
 const aliases = new Map(TOOLS.flatMap((tool) => [tool.command, ...(tool.aliases || [])].map((alias) => [alias, tool.id])));

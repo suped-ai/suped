@@ -22,6 +22,7 @@ usage
   suped secrets show <id> [--reveal]   print one entry, secrets hidden by default
   suped secrets set <id>   add or replace an entry (JSON on stdin)
   suped secrets remove <id>
+  suped secrets env        print shell exports for the tokens providers read
   suped secrets save [file]    capture tool credentials, seal the store, write it out
   suped secrets restore <file> merge a sealed file and sign those tools back in
   suped status             show image / volume / container state

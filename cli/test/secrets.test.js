@@ -68,6 +68,7 @@ function fixture({ tools = [CARRIER, NO_SECRET], signedIn = { github: 'gho_realt
     readFile: (f) => { if (f === 'missing') throw new Error('ENOENT'); return SEALED(store.__incoming ?? {}); },
     writeFile: (f, t) => { written[f] = t; },
     write: (t) => { stdout += t; },
+    note: (m) => logs.push(m),
     readStdin: () => stdin,
   });
   return { ...instance, logs, calls, written, stdout: () => stdout, stored: () => saved, text: () => logs.join('\n') };
@@ -236,4 +237,59 @@ test('status reports the store, the identity, and anything waiting', () => {
   assert.match(text, /GitHub\s+signed in; will travel/);
   assert.match(text, /1 account\(s\) waiting on you/);
   assert.match(text, /identity is not/);
+});
+
+test('most of the catalogue reads a token from the environment', () => {
+  // This is the point of `secrets env`: for these, the variable replaces
+  // signing in, so one stored token covers every machine.
+  const withEnv = TOOLS.filter((tool) => tool.secret?.env?.length);
+  assert.ok(withEnv.length >= 10, `expected most of the catalogue, got ${withEnv.length}`);
+  for (const tool of withEnv) {
+    for (const name of tool.secret.env) assert.match(name, /^[A-Z][A-Z0-9_]*$/, `${tool.id}: ${name}`);
+  }
+  // GitHub keeps its round-trip as well as its variable.
+  const github = TOOLS.find((tool) => tool.id === 'github');
+  assert.ok(github.secret.export && github.secret.import && github.secret.env);
+});
+
+test('a token uses its tool\'s documented variable without being told', () => {
+  const f = fixture({ tools: [{ ...CARRIER, secret: { ...CARRIER.secret, env: ['GH_TOKEN'] } }],
+                      store: { github: { kind: 'token', value: 'gho_value' } } });
+  assert.deepEqual(f.envPairs().map((p) => [p.name, p.value]), [['GH_TOKEN', 'gho_value']]);
+});
+
+test('an entry\'s own mapping beats the catalogue default', () => {
+  const f = fixture({ tools: [{ ...CARRIER, secret: { ...CARRIER.secret, env: ['GH_TOKEN'] } }],
+                      store: { github: { kind: 'token', value: 'gho_value', env: { MY_OWN_VAR: 'value' } } } });
+  assert.deepEqual(f.envPairs().map((p) => p.name), ['MY_OWN_VAR']);
+});
+
+test('env prints shell exports and nothing else on stdout', () => {
+  const f = fixture({ tools: [{ ...CARRIER, secret: { ...CARRIER.secret, env: ['GH_TOKEN'] } }],
+                      store: { github: { kind: 'token', value: 'gho_value' } } });
+  assert.equal(f.env(), 0);
+  assert.equal(f.stdout(), "export GH_TOKEN='gho_value'\n");
+  // Commentary must not land where it would be eval'd.
+  assert.equal(f.stdout().includes('suped:'), false);
+});
+
+test('a value containing a quote still produces a safe export', () => {
+  const f = fixture({ store: { weird: { kind: 'token', value: "it's \"quoted\"; rm -rf /", env: { W: 'value' } } } });
+  f.env();
+  assert.equal(f.stdout(), `export W='it'\\''s "quoted"; rm -rf /'\n`);
+});
+
+test('two entries cannot fight over one variable', () => {
+  const f = fixture({ store: {
+    aaa: { kind: 'token', value: 'first', env: { SHARED: 'value' } },
+    zzz: { kind: 'token', value: 'second', env: { SHARED: 'value' } },
+  } });
+  assert.equal(f.env(), 0);
+  assert.equal(f.stdout(), "export SHARED='first'\n");
+});
+
+test('env says so when there is nothing to set', () => {
+  const f = fixture({ store: {}, tools: [NO_SECRET] });
+  assert.equal(f.env(), 1);
+  assert.equal(f.stdout(), '');
 });
