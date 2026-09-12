@@ -103,6 +103,59 @@ mv -fT -- "$stage/verified/${command}" "$prefix/bin/${command}"
 `;
 }
 
+/**
+ * An archive holding a whole toolchain rather than a single executable. The
+ * tree is unpacked into a versioned directory inside the persistent home and
+ * verified there; only then is each executable linked onto PATH. `bins` is
+ * explicit, so adding a language cannot quietly put every script that happens
+ * to ship in its archive on PATH.
+ *
+ * `provides` names executables that `postInstall` is responsible for creating.
+ * They are checked alongside the version, so an install whose postInstall step
+ * failed is retried rather than mistaken for a complete one.
+ */
+export function toolchainInstall({ id, command, version, repository, downloadUrl, checksums,
+  archive, strip = 1, binDir = 'bin', bins = [command], provides = [], postInstall = '',
+  versionArgs = ['--version'], versionPattern,
+  architectures = { amd64: 'x86_64', arm64: 'aarch64' } }) {
+  const url = downloadUrl || `https://github.com/${repository}/releases/download/v$version/$archive`;
+  const inside = (dir) => (binDir === '.' ? dir : `${dir}/${binDir}`);
+  const ready = [`[ -x "$prefix/bin/${command}" ]`, `version_matches "$prefix/bin/${command}"`,
+    ...provides.map((name) => `[ -x "$prefix/bin/${name}" ]`)].join(' && ');
+  return `set -euo pipefail
+prefix=${shellQuote(PREFIX)}
+version=${shellQuote(version)}
+root="$prefix/share/suped/toolchains/${id}-$version"
+${versionCheck(command, version, versionArgs, versionPattern)}
+link_bins() {
+  local tmp="$1" name
+  for name in ${bins.map(shellQuote).join(' ')}; do
+    ln -s "${inside('$root')}/$name" "$tmp/$name.link"
+    mv -fT -- "$tmp/$name.link" "$prefix/bin/$name"
+  done
+}
+if ${ready}; then exit 0; fi
+case "$(uname -m)" in
+  x86_64|amd64) arch=${shellQuote(architectures.amd64)}; checksum=${shellQuote(checksums.amd64)} ;;
+  aarch64|arm64) arch=${shellQuote(architectures.arm64)}; checksum=${shellQuote(checksums.arm64)} ;;
+  *) printf 'Unsupported CPU architecture: %s\\n' "$(uname -m)" >&2; exit 1 ;;
+esac
+mkdir -p "$prefix/bin" "$prefix/share/suped/toolchains"
+stage=$(mktemp -d "$prefix/share/suped/toolchains/.${id}.XXXXXX")
+trap 'rm -rf -- "$stage"' EXIT
+archive="${archive}"
+curl --fail --show-error --location --retry 3 --connect-timeout 15 --max-time 900 --output "$stage/archive" "${url}"
+printf '%s  %s\\n' "$checksum" "$stage/archive" | sha256sum --check --status
+mkdir -p "$stage/root"
+tar --extract --gzip --file "$stage/archive" --directory "$stage/root" --no-same-owner --strip-components=${strip}
+rm -f -- "$stage/archive"
+if ! version_matches "${inside('$stage/root')}/${command}"; then printf 'Unexpected ${command} version.\\n' >&2; exit 1; fi
+rm -rf -- "$root"
+mv -fT -- "$stage/root" "$root"
+link_bins "$stage"
+${postInstall}`;
+}
+
 export function jsonOutput(result) {
   if (result?.status !== 0 || typeof result.stdout !== 'string') return undefined;
   try { return JSON.parse(result.stdout); } catch { return undefined; }

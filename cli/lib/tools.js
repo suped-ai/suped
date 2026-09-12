@@ -3,6 +3,7 @@
 import { DEPLOY_TOOLS } from './catalog/deploy.js';
 import { SERVICE_TOOLS } from './catalog/services.js';
 import { AGENT_TOOLS } from './catalog/agents.js';
+import { LANGUAGE_TOOLS } from './catalog/languages.js';
 import { plainBinaryInstall } from './catalog/installers.js';
 
 export const CATEGORIES = [
@@ -12,6 +13,7 @@ export const CATEGORIES = [
   { id: 'cloud', name: 'Cloud infrastructure' },
   { id: 'payments', name: 'Payments' },
   { id: 'agents', name: 'Agent clients' },
+  { id: 'languages', name: 'Languages and runtimes' },
   { id: 'workspace', name: 'Workspace' },
 ];
 
@@ -210,6 +212,7 @@ const CATALOGUE = [
   ...DEPLOY_TOOLS,
   ...SERVICE_TOOLS,
   ...AGENT_TOOLS,
+  ...LANGUAGE_TOOLS,
   {
     id: 'herdr',
     category: 'workspace', version: '0.9.0', docs: 'https://herdr.dev/docs/',

@@ -38,6 +38,8 @@ and helps you connect them. You can connect an account later.
 | Cloud | Firebase, DigitalOcean | App services and infrastructure |
 | Payments | Stripe | Payment integration and webhook development |
 | Agents | Codex, Claude Code | Run your chosen agent beside the tools |
+| Languages | Python, Go, Deno, Bun | Run scripts, build, and test locally |
+| Workspace | Herdr | Run several agents side by side and reattach later |
 
 ```sh
 suped setup                         # choose tools and connect accounts
@@ -46,7 +48,13 @@ suped setup gitlab vercel neon       # choose an alternative app stack
 suped setup stripe codex --skip-auth # install now, connect later
 suped login neon
 suped tools gitlab vercel neon       # check this stack's account access
+suped setup python go                # add language toolchains
 ```
+
+Node.js is already in the base image. The Languages category adds the other
+runtimes an agent needs to run code locally, each pinned and checksum-verified,
+and unpacked into the persistent home rather than the image — so picking one up
+later never means rebuilding. Python arrives with `uv` and `uvx` alongside it.
 
 Suped uses the provider CLIs for login. Credentials stay in their normal
 locations under `/home/suped`; Suped stores only your tool selections. Logins

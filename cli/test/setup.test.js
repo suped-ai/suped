@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createSetup } from '../lib/setup.js';
-import { TOOLS } from '../lib/tools.js';
+import { TOOLS, CATEGORIES } from '../lib/tools.js';
 
 function fixture({ interactive = true, config = null, answers = [], failInstall, failLogin, initialInstalled = [], initialConnected = [] } = {}) {
   const calls = [];
@@ -65,8 +65,8 @@ test('unknown tools fail before changing the workspace', async () => {
 });
 
 test('guided setup can use defaults, skip extra categories, and defer account login', async () => {
-  // One blank per category, including Workspace, then two declined logins.
-  const f = fixture({ answers: ['', '', '', '', '', '', '', '', 'n', 'n'] });
+  // The opening question, then one blank per category, then two declined logins.
+  const f = fixture({ answers: ['', ...CATEGORIES.map(() => ''), 'n', 'n'] });
   assert.equal(await f.setupIfNeeded(), 0);
   assert.deepEqual(f.saved().tools, ['github', 'cloudflare']);
   assert.equal(f.saved().completed, true);
@@ -74,7 +74,9 @@ test('guided setup can use defaults, skip extra categories, and defer account lo
 });
 
 test('guided setup accepts provider alternatives and validates category choices', async () => {
-  const f = fixture({ answers: ['1', 'neon', 'glab', 'vercel', 'neon', 'none', 'stripe', 'none', 'none'] });
+  // 'neon' is not a repository host, so the first answer is rejected and re-asked.
+  const choices = { source: ['neon', 'glab'], hosting: ['vercel'], database: ['neon'], payments: ['stripe'] };
+  const f = fixture({ answers: ['1', ...CATEGORIES.flatMap((category) => choices[category.id] || ['none'])] });
   assert.equal(await f.setup({ authenticate: false }), 0);
   assert.deepEqual(f.saved().tools, ['gitlab', 'vercel', 'neon', 'stripe']);
   assert.ok(f.logs.some((message) => /Choose from repositories/.test(message)));
