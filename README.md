@@ -125,6 +125,32 @@ survive stops, restarts, reset, and rebuild. Additional system packages
 installed with `apt` survive stops but are lost on reset/rebuild. Shared
 files let another agent pick up saved work; save any context it will need.
 
+## Move a workspace to another machine
+
+A workspace is defined by the tools you selected, the ports and mounts it was
+created with, and the repositories in it. `sync` writes exactly that to a small
+JSON file you can commit anywhere.
+
+```sh
+suped sync                      # what defines this workspace, and what would not move
+suped sync save workspace.json  # write it; "-" prints to stdout
+suped sync restore workspace.json   # on the other machine
+```
+
+`suped sync` is worth running before you travel: it names every repository with
+uncommitted changes, commits that are not on a remote, or no remote at all —
+the work a move would leave behind.
+
+The file contains no credentials, so connect accounts on the new machine with
+`suped login <tool>`. The home volume is not copied: `restore` reinstalls the
+selected tools, so they are built for the architecture they land on, and clones
+each project from its remote. Existing directories are never overwritten. Ports
+and mounts are applied when a container is created, so `restore` prints the
+`suped reset` command to apply them.
+
+To copy a home volume byte for byte instead, including its saved logins, see the
+backup instructions at [suped.dev/docs/persistence](https://suped.dev/docs/persistence).
+
 ## Commands
 
 ```text
@@ -138,6 +164,9 @@ suped mcp list           browse official remote MCP connections
 suped mcp add <ids...> --client codex|claude   register connections in a client
 suped mcp export <ids...> --client codex|claude|cursor   print config to merge
 suped exec <command...>  run an exact program/arguments, or one quoted shell command
+suped sync               show what defines this workspace, and what would not move
+suped sync save <file>   write the workspace to a portable file (no credentials)
+suped sync restore <file>  install that workspace's tools and clone its projects
 suped status             show Docker/container/image/volume state
 suped stop               stop the computer; keep its files
 suped reset              recreate the container; keep home, ports, and mounts
