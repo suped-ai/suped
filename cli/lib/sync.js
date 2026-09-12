@@ -13,8 +13,10 @@ import * as computer from './computer.js';
 
 export const MANIFEST_VERSION = 1;
 
-// Runs in the computer. Reports every repository under ~/projects and
-// ~/workspace, with whatever would not survive a move to another machine.
+// Runs in the computer. Reports every repository under ~/projects, ~/workspace
+// and ~/notes, with whatever would not survive a move to another machine.
+// Those three are the roots a move carries; ~/scratch and ~/downloads are
+// deliberately not scanned, which is what makes them the local-only places.
 const SCAN_PROJECTS = `
 const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
@@ -44,7 +46,7 @@ const walk = (rel, depth) => {
     if (entry.isDirectory() && !entry.name.startsWith('.')) walk(path.join(rel, entry.name), depth - 1);
   }
 };
-for (const root of ['projects', 'workspace']) walk(root, 2);
+for (const root of ['projects', 'workspace', 'notes']) walk(root, 2);
 found.sort((a, b) => a.path.localeCompare(b.path));
 process.stdout.write(JSON.stringify(found));
 `;

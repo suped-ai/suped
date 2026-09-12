@@ -109,7 +109,7 @@ ENV PATH="/home/suped/.local/bin:${PATH}"
 # volume on its first mount, so no existing workspace ever got it. It is part
 # of the Python selection now, pinned and checksum-verified like everything
 # else in the catalogue.
-RUN mkdir -p workspace projects downloads .config .local/bin \
+RUN mkdir -p workspace projects notes scratch downloads .config .local/bin \
     && printf '\nexport PATH="$HOME/.local/bin:$PATH"\n' >> .bashrc
 
 WORKDIR /home/suped/workspace

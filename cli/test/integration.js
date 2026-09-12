@@ -55,6 +55,20 @@ try {
   assert.equal(cli(['exec', 'cat', '/home/suped/test-mount/input.txt']), 'host mount survived\n');
   console.log('PASS exact arguments, stdin, exit status, and host mounts');
 
+  // The home skeleton, and the repair that reaches a workspace which already
+  // exists. Docker seeds the image's skeleton only on a volume's first mount,
+  // so without this a directory added to the image never appears in an older
+  // home -- exactly how uv came to be missing from every workspace predating it.
+  const skeleton = ['workspace', 'projects', 'notes', 'scratch', 'downloads', '.config', '.local/bin'];
+  for (const dir of skeleton) cli(['exec', 'test', '-d', `/home/suped/${dir}`]);
+  cli(['exec', 'sh', '-c', 'rm -rf ~/scratch && printf keep > ~/notes/keep.txt']);
+  cli(['exec', 'test', '!', '-d', '/home/suped/scratch']);
+  cli(['up']);
+  cli(['exec', 'test', '-d', '/home/suped/scratch']);
+  // Repair creates what is absent and leaves everything else alone.
+  assert.equal(cli(['exec', 'cat', '/home/suped/notes/keep.txt']), 'keep');
+  console.log('PASS home skeleton, and repair of a workspace that already existed');
+
   if (selectedTools.length) {
     for (const tool of selectedTools) {
       console.log(`Installing ${tool.name} ${tool.version}...`);

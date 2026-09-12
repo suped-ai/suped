@@ -140,7 +140,7 @@ export async function main(argv) {
 
   switch (command) {
     case 'shell': {
-      const { stale } = computer.ensureUp({ runArgs, features: features ?? [], log });
+      const { stale } = computer.ensureUp({ runArgs, features: features ?? [], migrate: true, log });
       warnIfStale(stale);
       const setupStatus = await firstRunSetup();
       if (setupStatus) return setupStatus;
@@ -148,7 +148,7 @@ export async function main(argv) {
     }
 
     case 'up': {
-      const { created, stale } = computer.ensureUp({ runArgs, features: features ?? [], log });
+      const { created, stale } = computer.ensureUp({ runArgs, features: features ?? [], migrate: true, log });
       warnIfStale(stale);
       const setupStatus = await firstRunSetup();
       if (setupStatus) return setupStatus;

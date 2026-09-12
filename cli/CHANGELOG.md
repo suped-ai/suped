@@ -5,6 +5,9 @@ version, so an image change is a package change.
 
 ## Unreleased
 
+- The home has `notes/` and `scratch/`, and the layout now says what a move carries. `suped sync` carries the git repositories under `workspace/`, `projects/` and `notes/` by remote and branch, so a notes directory that is a git repository travels on exactly the same terms as a project, with no separate mechanism; `scratch/` and `downloads/` are the places that stay on one machine.
+- Missing home directories are created when the workspace starts. Docker seeds the image's home skeleton into a named volume only on that volume's **first** mount, so until now a directory added to the image could never appear in a workspace that already existed — which is how uv came to be missing from every workspace created before it was added. `suped up` now repairs the skeleton of a running workspace too. It only ever creates what is absent, and `suped exec` deliberately does not pay for the check.
+
 ## 0.4.0 · 2026-09-12
 
 The workspace can do local work now. Until this release it could talk to every
