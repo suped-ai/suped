@@ -8,7 +8,7 @@
 // of it: the manifest carries none, and CI holds no accounts.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -124,6 +124,25 @@ try {
     assert.equal(sh(`cat ~/${root}/${name}/content.txt`), `carried by ${root}\n`);
   }
   console.log('PASS restore is idempotent and never overwrites what is already there');
+
+  // The composite command, which is what a person is actually told to run. CI
+  // holds no accounts, so this is the base-workspace path: a complete move
+  // that carries no credentials, which must be stated rather than implied.
+  use(source);
+  const moveDir = join(fileDir, 'moved');
+  const saved = cli(['move', 'save', moveDir]);
+  assert.match(saved, /No credentials were sealed/);
+  assert.ok(existsSync(join(moveDir, 'workspace.json')), 'move save writes the manifest');
+  assert.equal(existsSync(join(moveDir, 'secrets.age')), false, 'nothing sealed means no sealed file');
+  // The manifest half must be byte-identical to what `sync save` produces: the
+  // composite is a convenience over the same files, not a second format.
+  assert.deepEqual(JSON.parse(readFileSync(join(moveDir, 'workspace.json'), 'utf8')), manifest);
+
+  use(target);
+  const moved = cli(['move', 'restore', moveDir]);
+  assert.match(moved, /no credentials came across/);
+  assert.match(moved, /already here/);
+  console.log('PASS move save/restore carries the same files, and says what it could not carry');
 } finally {
   // The bare repositories were created by the container's user, which is not
   // the user running this, so the host cannot unlink them. Delete them from

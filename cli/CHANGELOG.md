@@ -5,6 +5,8 @@ version, so an image change is a package change.
 
 ## Unreleased
 
+- Add `move`, which is the whole job in one command each side. `suped move save <dir>` writes what the workspace *is* and what it can *sign into* together; `suped move restore <dir>` rebuilds it and signs its tools back in, in that order, because a tool has to exist before its credential can be handed back to it. `suped move` alone shows everything that would travel. Your identity file is deliberately not in that directory — everything written there is safe to commit, and the identity is the one thing that is not. `sync` and `secrets` are unchanged and still usable on their own; `sync save` in particular can never include a credential, which is what makes it the right thing to hand to someone else.
+
 - The home has `notes/` and `scratch/`, and the layout now says what a move carries. `suped sync` carries the git repositories under `workspace/`, `projects/` and `notes/` by remote and branch, so a notes directory that is a git repository travels on exactly the same terms as a project, with no separate mechanism; `scratch/` and `downloads/` are the places that stay on one machine.
 - Missing home directories are created when the workspace starts. Docker seeds the image's home skeleton into a named volume only on that volume's **first** mount, so until now a directory added to the image could never appear in a workspace that already existed — which is how uv came to be missing from every workspace created before it was added. `suped up` now repairs the skeleton of a running workspace too. It only ever creates what is absent, and `suped exec` deliberately does not pay for the check.
 

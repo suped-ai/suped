@@ -194,9 +194,31 @@ files let another agent pick up saved work; save any context it will need.
 
 ## Move a workspace to another machine
 
+`move` is the whole job in one command each side. It writes a directory holding
+two files: what the workspace *is*, and what it can *sign into*.
+
+```sh
+suped move                     # everything that would travel, and what would not
+suped move save ./my-workspace # both halves, together
+suped move restore ./my-workspace   # on the other machine
+```
+
+Your identity file is deliberately **not** in that directory. Everything written
+there is safe to commit; the identity is the one thing that is not, and you move
+it yourself, once — `suped secrets key` prints where it lives. Without it the
+sealed file cannot be opened, by you or anyone else.
+
+The two halves stay two files on purpose. The manifest is plain text meant to be
+read in a diff; the sealed store is opaque and changes completely every time it
+is written, so folding them together would make every save a whole-file change.
+Each half is also usable on its own:
+
+### The workspace, without credentials
+
 A workspace is defined by the tools you selected, the ports and mounts it was
 created with, and the repositories in it. `sync` writes exactly that to a small
-JSON file you can commit anywhere.
+JSON file you can commit anywhere. It can never include a credential, which is
+what makes it the right thing to hand to someone else.
 
 ```sh
 suped sync                      # what defines this workspace, and what would not move
@@ -231,6 +253,9 @@ suped mcp list           browse official remote MCP connections
 suped mcp add <ids...> --client codex|claude   register connections in a client
 suped mcp export <ids...> --client codex|claude|cursor   print config to merge
 suped exec <command...>  run an exact program/arguments, or one quoted shell command
+suped move               show everything that would travel, and what would not
+suped move save <dir>    write the workspace and its sealed credentials together
+suped move restore <dir>    rebuild that workspace here, and sign its tools back in
 suped sync               show what defines this workspace, and what would not move
 suped sync save <file>   write the workspace to a portable file (no credentials)
 suped sync restore <file>  install that workspace's tools and clone its projects
