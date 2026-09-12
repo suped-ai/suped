@@ -122,6 +122,16 @@ export const TOOLS = [
       const user = jsonOutput(result);
       return Boolean(user && Number.isInteger(user.id) && user.id > 0 && typeof user.login === 'string' && user.login.length > 0);
     },
+    // Read the token back out and hand it to another machine's gh. This uses
+    // the provider's own supported path rather than copying whatever file gh
+    // happened to use: it stores the token in the system keyring where one
+    // exists and in hosts.yml where one does not, so the file to copy is not
+    // the same on every machine. `export` prints the secret on stdout;
+    // `import` reads it on stdin.
+    secret: {
+      export: ['gh', 'auth', 'token', '--hostname', 'github.com'],
+      import: ['gh', 'auth', 'login', '--hostname', 'github.com', '--git-protocol', 'https', '--with-token'],
+    },
   },
   {
     id: 'cloudflare',

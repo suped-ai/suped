@@ -24,6 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl wget gnupg \
       bash git jq sqlite3 ripgrep unzip zip \
       w3m lynx \
+      age \
       python3 python3-pip python3-venv \
       sudo tmux less vim nano openssh-client procps \
       tzdata locales \
