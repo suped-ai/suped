@@ -90,3 +90,12 @@ jobs:
           '
       - name: CLI, selected tools, persistence, and browser
         run: node cli/test/integration.js
+
+      # The round trip `sync` promises: build a workspace, save it, and rebuild
+      # it as a separate one. Its own container and volume names, and a base
+      # workspace, so it does not reinstall the catalogue to prove a clone.
+      - name: a workspace moves
+        env:
+          SUPED_CONTAINER: suped-ci-move
+          SUPED_VOLUME: suped-ci-move-home
+        run: node cli/test/move.integration.js
