@@ -125,6 +125,16 @@ try {
   }
   console.log('PASS restore is idempotent and never overwrites what is already there');
 } finally {
+  // The bare repositories were created by the container's user, which is not
+  // the user running this, so the host cannot unlink them. Delete them from
+  // inside a workspace that still exists, where the owner is.
+  for (const workspace of [source, target]) {
+    use(workspace);
+    if (docker(['container', 'inspect', workspace.container]).status !== 0) continue;
+    spawnSync(process.execPath, [bin, 'exec', 'bash', '-lc', 'find ~/remotes -mindepth 1 -delete 2>/dev/null || true'],
+      { encoding: 'utf8', env: process.env, windowsHide: true });
+    break;
+  }
   for (const workspace of [source, target]) {
     use(workspace);
     if (docker(['container', 'inspect', workspace.container]).status === 0
