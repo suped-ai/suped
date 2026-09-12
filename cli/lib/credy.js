@@ -18,6 +18,8 @@ export const DEFAULT_IDENTITY = '$HOME/.config/suped/credy.key';
 
 const RECIPIENT = /^age1[0-9a-z]{20,}$/;
 const ID = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+const ENV_NAME = /^[A-Z_][A-Z0-9_]{0,63}$/;
+const ENV_PATH = /^[a-z][a-zA-Z0-9_]*(\.[a-zA-Z0-9_]+)?$/;
 
 /**
  * An account is not a string. A real signup leaves an address, a password, a
@@ -79,11 +81,35 @@ export function validateEntry(id, entry) {
       if (!STATUSES.includes(value)) fail(`status must be one of ${STATUSES.join(', ')}`);
     } else if (field === 'needs') {
       if (!Array.isArray(value) || value.some((need) => typeof need !== 'string')) fail('needs must be a list of strings');
+    } else if (field === 'env') {
+      // { VAR_NAME: "path.to.the.value" } -- explicit, so a token and a key
+      // buried in an account record read the same way.
+      if (!isPlainObject(value)) fail('env must be an object of variable name to field path');
+      for (const [name, path] of Object.entries(value)) {
+        if (!ENV_NAME.test(name)) fail(`env name ${name} is not a shell variable name`);
+        if (typeof path !== 'string' || !ENV_PATH.test(path)) fail(`env.${name} must be a field path like "value" or "keys.api"`);
+      }
     } else if (typeof value !== 'string') {
       fail(`${field} must be a string`);
     }
   }
   return entry;
+}
+
+/**
+ * The environment variables an entry provides, as [name, value] pairs. Many
+ * providers read a token from the environment rather than from a login -- that
+ * is how they are documented to work in CI -- so for those this replaces
+ * signing in rather than supplementing it.
+ */
+export function envFor(entry) {
+  const pairs = [];
+  for (const [name, path] of Object.entries(entry.env ?? {})) {
+    const [head, tail] = path.split('.');
+    const value = tail === undefined ? entry[head] : entry[head]?.[tail];
+    if (typeof value === 'string' && value) pairs.push([name, value]);
+  }
+  return pairs;
 }
 
 /** A copy safe to print: metadata kept, anything secret replaced. */

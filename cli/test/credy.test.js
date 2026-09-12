@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createCredy, assertRecipient, assertId, validateEntry, validateSealed, redactEntry,
-  FORMAT, KINDS, STATUSES, DEFAULT_IDENTITY,
+  FORMAT, KINDS, STATUSES, DEFAULT_IDENTITY, envFor,
 } from '../lib/credy.js';
 
 const RECIPIENT = 'age1sx7zeautvxlhnw3ut6vx0lxzxdxhwszvmrxtc8dwyv4usadf7s3qxjh6c5';
@@ -185,4 +185,32 @@ test('unsealing refuses input that is not an encrypted file', () => {
 
 test('the default identity lives in the workspace config, not a repo', () => {
   assert.match(DEFAULT_IDENTITY, /^\$HOME\/\.config\/suped\//);
+});
+
+test('an entry can say which environment variables it sets', () => {
+  const token = { kind: 'token', value: 'cf_token_value', env: { CLOUDFLARE_API_TOKEN: 'value' } };
+  assert.doesNotThrow(() => validateEntry('cloudflare', token));
+  assert.deepEqual(envFor(token), [['CLOUDFLARE_API_TOKEN', 'cf_token_value']]);
+});
+
+test('a variable can come from a key buried in an account record', () => {
+  const account = { kind: 'account', service: 'resend', keys: { api: 're_key' }, env: { RESEND_API_KEY: 'keys.api' } };
+  assert.deepEqual(envFor(account), [['RESEND_API_KEY', 're_key']]);
+});
+
+test('an env map that points at nothing yields nothing rather than "undefined"', () => {
+  assert.deepEqual(envFor({ kind: 'token', value: 'v', env: { A: 'missing' } }), []);
+  assert.deepEqual(envFor({ kind: 'account', service: 's', env: { A: 'keys.api' } }), []);
+  assert.deepEqual(envFor({ kind: 'token', value: 'v' }), []);
+});
+
+test('an env map is checked so nothing unusable reaches a shell', () => {
+  const bad = (env) => () => validateEntry('x', { kind: 'token', value: 'v', env });
+  assert.throws(bad('nope'), /env must be an object/);
+  assert.throws(bad({ 'lower-case': 'value' }), /not a shell variable name/);
+  assert.throws(bad({ 'HAS SPACE': 'value' }), /not a shell variable name/);
+  assert.throws(bad({ 'A;B': 'value' }), /not a shell variable name/);
+  assert.throws(bad({ GOOD: 'keys.api.too.deep' }), /must be a field path/);
+  assert.throws(bad({ GOOD: '../escape' }), /must be a field path/);
+  assert.throws(bad({ GOOD: 42 }), /must be a field path/);
 });

@@ -13,7 +13,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import * as computer from './computer.js';
-import { createCredy, redactEntry, validateEntry, DEFAULT_IDENTITY, KINDS } from './credy.js';
+import { createCredy, redactEntry, validateEntry, envFor, DEFAULT_IDENTITY, KINDS } from './credy.js';
 import { TOOLS } from './tools.js';
 
 /** The store lives in the home, so it survives reset like everything else there. */
@@ -42,6 +42,8 @@ export function createSecrets({
   readFile = (file) => readFileSync(file, 'utf8'),
   writeFile = (file, text) => writeFileSync(file, text, { mode: 0o600 }),
   write = (text) => process.stdout.write(text),
+  // `env` is meant to be eval'd, so only the export lines may reach stdout.
+  note = (message) => console.error(message),
   readStdin = () => readFileSync(0, 'utf8'),
   identityPath = DEFAULT_IDENTITY,
   storePath = DEFAULT_STORE,
@@ -162,6 +164,51 @@ export function createSecrets({
     return { applied, failed };
   }
 
+  /** Single-quote for a shell, the only form that needs no other escaping. */
+  function shellQuote(value) {
+    return `'${value.replaceAll("'", "'\\''")}'`;
+  }
+
+  /**
+   * Variables the store can set. An entry's own `env` wins; otherwise a token
+   * whose id matches a tool uses that tool's documented variable.
+   */
+  function envPairs() {
+    const entries = loadStore();
+    const byId = new Map(tools.map((tool) => [tool.id, tool]));
+    const pairs = [];
+    const claimed = new Map();
+    for (const id of Object.keys(entries).sort()) {
+      const entry = entries[id];
+      let mapped = envFor(entry);
+      if (!mapped.length && entry.kind === 'token' && entry.value) {
+        mapped = (byId.get(id)?.secret?.env ?? []).map((name) => [name, entry.value]);
+      }
+      for (const [name, value] of mapped) {
+        if (claimed.has(name)) {
+          note(`suped: ${name} is set by ${claimed.get(name)}; ignoring ${id}`);
+          continue;
+        }
+        claimed.set(name, id);
+        pairs.push({ name, value, id });
+      }
+    }
+    return pairs;
+  }
+
+  /** Print shell exports. Nothing but the exports goes to stdout. */
+  function env() {
+    const pairs = envPairs();
+    if (!pairs.length) {
+      note('Nothing in the store sets an environment variable.');
+      note('Most providers read a token from one; store it and give the entry an "env" map.');
+      return 1;
+    }
+    for (const { name, value } of pairs) write(`export ${name}=${shellQuote(value)}\n`);
+    note(`suped: ${pairs.length} variable(s) from ${new Set(pairs.map((p) => p.id)).size} entr(ies)`);
+    return 0;
+  }
+
   // ---- commands ------------------------------------------------------------
 
   function status() {
@@ -236,12 +283,12 @@ export function createSecrets({
     return failed ? 1 : 0;
   }
 
-  return { status, key, list, show, set, remove, save, restore, loadStore, saveStore };
+  return { status, key, list, show, set, remove, save, restore, env, envPairs, loadStore, saveStore };
 }
 
 export async function mainSecrets(args, { runArgs = [], flags = new Set() } = {}) {
   const [action = 'status', ...rest] = args;
-  const known = ['status', 'key', 'list', 'show', 'set', 'remove', 'save', 'restore'];
+  const known = ['status', 'key', 'list', 'show', 'set', 'remove', 'save', 'restore', 'env'];
   if (!known.includes(action)) {
     throw new Error(`unknown secrets command "${action}". Try one of: ${known.join(', ')}`);
   }
@@ -255,6 +302,7 @@ export async function mainSecrets(args, { runArgs = [], flags = new Set() } = {}
     case 'remove': return secrets.remove(rest[0]);
     case 'save': return secrets.save(rest[0] ?? null);
     case 'restore': return secrets.restore(rest[0]);
+    case 'env': return secrets.env();
     default: return secrets.status();
   }
 }

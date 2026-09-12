@@ -5,6 +5,8 @@ version, so an image change is a package change.
 
 ## Unreleased
 
+- `suped secrets env` prints shell exports for the credentials providers read from the environment. Most of the catalogue works that way — it is how each is documented to run in CI — so for those a stored token replaces signing in rather than supplementing it, and one token covers every machine: `eval "$(suped secrets env)"`. Thirteen tools carry their documented variable; an entry's own `env` map always wins, and can pull a value out of an account record (`{"RESEND_API_KEY": "keys.api"}`). Only the export lines go to stdout, so the output is safe to eval.
+
 ## 0.3.0 · 2026-09-12
 
 Published straight after 0.1.0: 0.2.0 was tagged but never reached npm, so this is
