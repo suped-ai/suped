@@ -212,6 +212,52 @@ export function createCredy({ capture, now = () => new Date().toISOString() } = 
     return { recipient: recipientFor(identityPath), created: true };
   }
 
+  /**
+   * The identity itself, so it can be moved to another machine. This is the
+   * one secret the design deliberately does not carry for you, so the only
+   * thing that makes it bearable is making the move a single pipe.
+   */
+  function exportIdentity(identityPath = DEFAULT_IDENTITY) {
+    requireAge();
+    const recipient = recipientFor(identityPath);
+    const result = capture(['bash', '-lc', `cat "${identityPath}"`]);
+    if (result.status !== 0 || !result.stdout.trim()) {
+      throw new Error(`could not read the identity at ${identityPath}`);
+    }
+    return { identity: result.stdout, recipient };
+  }
+
+  /**
+   * Install an identity from somewhere else. Verified on a staged copy before
+   * it is activated, the same way an installed executable is, because an
+   * unusable key that has replaced a working one loses every sealed secret.
+   */
+  function importIdentity({ identity, identityPath = DEFAULT_IDENTITY, replace = false } = {}) {
+    requireAge();
+    const text = String(identity ?? '');
+    if (!/AGE-SECRET-KEY-1/i.test(text)) throw new Error('that does not look like an age identity file');
+    const existing = recipientFor(identityPath, { missingOk: true });
+    if (existing && !replace) {
+      throw new Error(`an identity is already here (${existing}). Anything sealed only to it becomes unopenable if you replace it; pass --replace when that is what you mean.`);
+    }
+    const staged = `${identityPath}.incoming`;
+    const written = capture(['bash', '-lc',
+      `set -e; umask 077; mkdir -p "$(dirname "${identityPath}")"; cat > "${staged}"`], { input: text });
+    if (written.status !== 0) throw new Error(`could not write to ${identityPath}: ${written.stderr.trim()}`);
+    const check = capture(['bash', '-lc', `age-keygen -y "${staged}" 2>/dev/null`]);
+    const recipient = check.stdout.trim();
+    if (check.status !== 0 || !recipient) {
+      capture(['bash', '-lc', `rm -f "${staged}"`]);
+      throw new Error('that identity is not usable, so nothing was changed');
+    }
+    const moved = capture(['bash', '-lc', `mv -f "${staged}" "${identityPath}"`]);
+    if (moved.status !== 0) {
+      capture(['bash', '-lc', `rm -f "${staged}"`]);
+      throw new Error(`could not install the identity: ${moved.stderr.trim()}`);
+    }
+    return { recipient: assertRecipient(recipient), replaced: Boolean(existing) };
+  }
+
   /** Named entries in, one armoured blob out. Safe to commit. */
   function seal({ entries, recipient }) {
     requireAge();
@@ -256,5 +302,5 @@ export function createCredy({ capture, now = () => new Date().toISOString() } = 
     return validateSealed(payload).entries;
   }
 
-  return { available, ensureIdentity, recipientFor, seal, unseal };
+  return { available, ensureIdentity, exportIdentity, importIdentity, recipientFor, seal, unseal };
 }

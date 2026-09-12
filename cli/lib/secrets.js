@@ -240,13 +240,35 @@ export function createSecrets({
     return 0;
   }
 
-  function key() {
+  function key({ show = false, install = false, replace = false } = {}) {
+    if (show && install) throw new Error('choose one of --show or --import, not both');
+
+    if (install) {
+      const { recipient, replaced } = credy.importIdentity({ identity: readStdin(), identityPath, replace });
+      log(`${replaced ? 'replaced' : 'installed'} the identity at ${identityPath}`);
+      log(`recipient  ${recipient}`);
+      log('\nAnything sealed to this recipient will open here now.');
+      return 0;
+    }
+
+    if (show) {
+      // The key itself is the only thing on stdout, so this can be piped
+      // straight into the other machine's "suped secrets key --import".
+      const { identity, recipient } = credy.exportIdentity(identityPath);
+      note(`# private identity for ${recipient}`);
+      note('# anything holding this opens every secret sealed to it');
+      write(identity.endsWith('\n') ? identity : `${identity}\n`);
+      return 0;
+    }
+
     const { recipient, created } = credy.ensureIdentity(identityPath);
     log(created ? `created an identity at ${identityPath}` : `identity already at ${identityPath}`);
     log(`recipient  ${recipient}`);
     if (created) {
-      log('\nBack this file up somewhere only you can reach, and copy it to any machine');
-      log('that must open these secrets. Lose it and the sealed files cannot be opened.');
+      log('\nBack this file up somewhere only you can reach. Lose it and the sealed');
+      log('files cannot be opened, by you or anyone else.');
+      log('\nTo put it on another machine, in one step:');
+      log('  suped secrets key --show | ssh other-machine suped secrets key --import');
     }
     return 0;
   }
@@ -295,7 +317,7 @@ export async function mainSecrets(args, { runArgs = [], flags = new Set() } = {}
   computer.ensureUp({ runArgs, log: (message) => console.error(`suped: ${message}`) });
   const secrets = createSecrets();
   switch (action) {
-    case 'key': return secrets.key();
+    case 'key': return secrets.key({ show: flags.has('show'), install: flags.has('import'), replace: flags.has('replace') });
     case 'list': return secrets.list();
     case 'show': return secrets.show(rest[0], { reveal: flags.has('reveal') });
     case 'set': return secrets.set(rest[0]);

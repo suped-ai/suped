@@ -16,8 +16,13 @@ usage
   suped sync               show what defines this workspace, and what would not move
   suped sync save <file>   write the workspace to a portable file (no credentials)
   suped sync restore <file>   install that workspace's tools and clone its projects
+  suped move               show everything that would travel, and what would not
+  suped move save <dir>    write the workspace and its sealed credentials together
+  suped move restore <dir>    rebuild that workspace here, and sign its tools back in
   suped secrets            show the account store, and what is waiting on you
   suped secrets key        create this workspace's encryption identity
+  suped secrets key --show     print the identity, to move it to another machine
+  suped secrets key --import [--replace]   install one from stdin
   suped secrets list       list stored entries
   suped secrets show <id> [--reveal]   print one entry, secrets hidden by default
   suped secrets set <id>   add or replace an entry (JSON on stdin)
@@ -197,6 +202,9 @@ export async function main(argv) {
 
     case 'sync':
       return (await import('./sync.js')).mainSync(args, { runArgs });
+
+    case 'move':
+      return (await import('./move.js')).mainMove(args, { runArgs, flags });
 
     case 'secrets':
       return (await import('./secrets.js')).mainSecrets(args, { runArgs, flags });
