@@ -1,0 +1,65 @@
+name: release
+
+# Publishing happens from a tag, so what ships is what was reviewed and a rerun
+# cannot quietly publish a branch that moved underneath it.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # npm trusted publishing: this is what proves the publish came from this
+  # workflow in this repository. There is no token anywhere, which is the point
+  # -- npm deprecated long-lived automation tokens in favour of this.
+  id-token: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: publish to npm
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          # Trusted publishing needs Node 22.14+; "22" resolves to the latest 22.x.
+          # No registry-url: it writes an .npmrc expecting NODE_AUTH_TOKEN, and
+          # there is no token here. The default registry is already npmjs.org.
+          node-version: "22"
+
+      # Node 22 still bundles npm 10; trusted publishing needs 11.5.1 or later.
+      - name: use an npm that can publish with OIDC
+        run: |
+          npm install -g npm@latest
+          npm --version
+
+      - run: npm test
+
+      # A dispatch can be pointed at any ref. Publishing one that is not a tag
+      # would ship whatever happened to be on a branch.
+      - name: refuse to publish anything that is not a tag
+        run: |
+          case "$GITHUB_REF" in
+            refs/tags/v*) ;;
+            *) echo "::error::release publishes tags only; got $GITHUB_REF" ; exit 1 ;;
+          esac
+
+      - name: the tag and the package version must agree
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package version $version"
+            exit 1
+          fi
+          echo "publishing $version"
+
+      - run: npm publish --access public
