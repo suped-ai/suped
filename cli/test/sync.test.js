@@ -5,7 +5,8 @@ import { createSync, splitRunArgs, validateManifest, MANIFEST_VERSION } from '..
 const PROJECTS = [
   { path: 'projects/blog', remote: 'https://github.com/me/blog.git', branch: 'main', dirty: false, unpushed: false },
   { path: 'projects/notes', remote: 'https://github.com/me/notes.git', branch: 'master', dirty: true, unpushed: false },
-  { path: 'projects/scratch', remote: null, branch: 'main', dirty: false, unpushed: false },
+  // With no remote, git reports every commit as unpushed. Verified against a real container.
+  { path: 'projects/scratch', remote: null, branch: 'main', dirty: false, unpushed: true },
   { path: 'workspace/spike', remote: 'https://github.com/me/spike.git', branch: 'main', dirty: false, unpushed: true },
 ];
 
@@ -98,6 +99,8 @@ test('status reports work that would be left behind and exits nonzero', () => {
   assert.match(text, /projects\/notes\s+uncommitted changes/);
   assert.match(text, /projects\/scratch\s+no remote/);
   assert.match(text, /workspace\/spike\s+commits not on any remote/);
+  // A repo with no remote has every commit unpushed; reporting both is noise.
+  assert.doesNotMatch(text, /projects\/scratch\s+no remote, commits not on any remote/);
   assert.equal(text.includes('projects/blog  '), true);
   assert.match(text, /Saved logins are not included/);
 });

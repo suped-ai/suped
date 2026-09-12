@@ -141,7 +141,8 @@ export function createSync({
       const why = [
         !project.remote ? 'no remote' : null,
         project.dirty ? 'uncommitted changes' : null,
-        project.unpushed ? 'commits not on any remote' : null,
+        // Without a remote every commit is unpushed, so saying both adds nothing.
+        project.remote && project.unpushed ? 'commits not on any remote' : null,
       ].filter(Boolean).join(', ');
       log(`  ~/${project.path.padEnd(34)} ${why}`);
     }
