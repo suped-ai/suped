@@ -1,4 +1,4 @@
-// authsy: hand off scoped credentials between machines, encrypted, with no
+// credy: hand off scoped credentials between machines, encrypted, with no
 // hosted service.
 //
 // This file knows nothing about Suped, Docker, or any particular provider. It
@@ -14,7 +14,7 @@
 export const FORMAT = 2;
 
 /** Where a suped workspace keeps its identity. Callers may use any path. */
-export const DEFAULT_IDENTITY = '$HOME/.config/suped/authsy.key';
+export const DEFAULT_IDENTITY = '$HOME/.config/suped/credy.key';
 
 const RECIPIENT = /^age1[0-9a-z]{20,}$/;
 const ID = /^[a-z0-9][a-z0-9._-]{0,63}$/;
@@ -106,7 +106,7 @@ export function redactEntry(entry) {
 function upgrade(payload) {
   if (payload.format === FORMAT) return payload;
   if (payload.format !== 1) {
-    throw new Error(`not a usable payload: unsupported format ${payload.format}; this authsy writes ${FORMAT}`);
+    throw new Error(`not a usable payload: unsupported format ${payload.format}; this credy writes ${FORMAT}`);
   }
   const entries = Object.fromEntries(
     Object.entries(payload.secrets ?? {}).map(([id, value]) => [id, { kind: 'token', value }]),
@@ -124,7 +124,7 @@ export function validateSealed(payload) {
     }
     return upgrade(payload);
   }
-  if (payload.format !== FORMAT) fail(`unsupported format ${payload.format}; this authsy writes ${FORMAT}`);
+  if (payload.format !== FORMAT) fail(`unsupported format ${payload.format}; this credy writes ${FORMAT}`);
   if (!isPlainObject(payload.entries)) fail('entries must be an object');
   for (const [id, entry] of Object.entries(payload.entries)) validateEntry(id, entry);
   return payload;
@@ -153,8 +153,8 @@ function secretStrings(entries) {
  * never on a command line: that is the difference between a secret and a secret
  * in `ps`.
  */
-export function createAuthsy({ capture, now = () => new Date().toISOString() } = {}) {
-  if (typeof capture !== 'function') throw new Error('authsy needs a capture function');
+export function createCredy({ capture, now = () => new Date().toISOString() } = {}) {
+  if (typeof capture !== 'function') throw new Error('credy needs a capture function');
 
   function available() {
     return capture(['age', '--version']).status === 0;

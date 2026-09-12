@@ -5,6 +5,8 @@ version, so an image change is a package change.
 
 ## Unreleased
 
+- Rename the credential layer from authsy to credy. The workspace identity is now `~/.config/suped/credy.key`. Nothing released used the old name, so there is nothing to migrate.
+
 - The secret store holds records, not strings. An account is an address, a password, a second factor, recovery codes and whatever key was issued later; storing one string threw all of that away. Entries now have a kind: `token` for a credential a tool can be signed back in with, `email` for a mailbox you already own, and `account` for an account at a service. `suped secrets list`, `show <id>` (secrets hidden unless `--reveal`), `set <id>` (one entry as JSON on stdin) and `remove <id>` work on a store kept in the workspace at `~/.config/suped/secrets.age`. Files written by the previous version still open, read as tokens.
 - An account a person had to create by hand has somewhere to live. Where a service will not allow an agent to sign up, the agent records the account as `pending` with what it still needs; `suped secrets` and `list` surface those, and finishing the signup is just replacing the entry. Accounts are signed up with a mailbox you already configured, not one invented per service.
 

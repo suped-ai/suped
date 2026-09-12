@@ -8,12 +8,12 @@
 // would -- but it holds the mailbox to sign up with, records what came back,
 // and has somewhere to put an account a person had to create by hand.
 //
-// The crypto and the record format live in authsy.js, which knows nothing about
+// The crypto and the record format live in credy.js, which knows nothing about
 // Suped. This file is the glue.
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import * as computer from './computer.js';
-import { createAuthsy, redactEntry, validateEntry, DEFAULT_IDENTITY, KINDS } from './authsy.js';
+import { createCredy, redactEntry, validateEntry, DEFAULT_IDENTITY, KINDS } from './credy.js';
 import { TOOLS } from './tools.js';
 
 /** The store lives in the home, so it survives reset like everything else there. */
@@ -46,7 +46,7 @@ export function createSecrets({
   identityPath = DEFAULT_IDENTITY,
   storePath = DEFAULT_STORE,
   tools = TOOLS,
-  authsy = createAuthsy({ capture }),
+  credy = createCredy({ capture }),
 } = {}) {
 
   // ---- the store -----------------------------------------------------------
@@ -54,12 +54,12 @@ export function createSecrets({
   function loadStore() {
     const result = capture(['bash', '-lc', `cat "${storePath}" 2>/dev/null`]);
     if (result.status !== 0 || !result.stdout.trim()) return {};
-    return authsy.unseal({ ciphertext: result.stdout, identityPath });
+    return credy.unseal({ ciphertext: result.stdout, identityPath });
   }
 
   function saveStore(entries) {
-    const { recipient } = authsy.ensureIdentity(identityPath);
-    const ciphertext = authsy.seal({ entries, recipient });
+    const { recipient } = credy.ensureIdentity(identityPath);
+    const ciphertext = credy.seal({ entries, recipient });
     const written = capture(['bash', '-lc',
       `set -e; umask 077; mkdir -p "$(dirname "${storePath}")"; cat > "${storePath}"`], { input: ciphertext });
     if (written.status !== 0) throw new Error(`could not write the store: ${written.stderr.trim()}`);
@@ -165,7 +165,7 @@ export function createSecrets({
   // ---- commands ------------------------------------------------------------
 
   function status() {
-    const recipient = authsy.available() ? authsy.recipientFor(identityPath, { missingOk: true }) : null;
+    const recipient = credy.available() ? credy.recipientFor(identityPath, { missingOk: true }) : null;
     const entries = recipient ? loadStore() : {};
     const counts = Object.fromEntries(Object.keys(KINDS).map((kind) => [kind, 0]));
     for (const entry of Object.values(entries)) counts[entry.kind] += 1;
@@ -194,7 +194,7 @@ export function createSecrets({
   }
 
   function key() {
-    const { recipient, created } = authsy.ensureIdentity(identityPath);
+    const { recipient, created } = credy.ensureIdentity(identityPath);
     log(created ? `created an identity at ${identityPath}` : `identity already at ${identityPath}`);
     log(`recipient  ${recipient}`);
     if (created) {
@@ -225,7 +225,7 @@ export function createSecrets({
     let ciphertext;
     try { ciphertext = readFile(file); }
     catch (error) { throw new Error(`could not read ${file}: ${error.message}`); }
-    const incoming = authsy.unseal({ ciphertext, identityPath });
+    const incoming = credy.unseal({ ciphertext, identityPath });
     const merged = { ...loadStore(), ...incoming };
     saveStore(merged);
     log(`merged ${Object.keys(incoming).length} entr${Object.keys(incoming).length === 1 ? 'y' : 'ies'} into the store`);

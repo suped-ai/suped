@@ -54,7 +54,7 @@ function fixture({ tools = [CARRIER, NO_SECRET], signedIn = { github: 'gho_realt
     throw new assert.AssertionError({ message: `unexpected command ${JSON.stringify(argv)}` });
   };
 
-  const authsy = {
+  const credy = {
     available: () => true,
     ensureIdentity: () => ({ recipient: RECIPIENT, created: false }),
     recipientFor: () => RECIPIENT,
@@ -63,7 +63,7 @@ function fixture({ tools = [CARRIER, NO_SECRET], signedIn = { github: 'gho_realt
   };
 
   const instance = createSecrets({
-    capture, authsy, tools,
+    capture, credy, tools,
     log: (m) => logs.push(m),
     readFile: (f) => { if (f === 'missing') throw new Error('ENOENT'); return SEALED(store.__incoming ?? {}); },
     writeFile: (f, t) => { written[f] = t; },
