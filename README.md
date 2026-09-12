@@ -107,9 +107,34 @@ workflow format, or agent framework.
 
 ## What's on the box
 
-Ubuntu 24.04 with bash, Python, Node, git, curl, wget, jq, sqlite3, ffmpeg,
-ripgrep, unzip, build-essential, tmux, editors, uv, and Playwright/Chromium.
-The `suped` user has passwordless sudo. Add whatever else your work needs.
+Ubuntu 24.04 with bash, Python, Node, git, curl, wget, jq, sqlite3, ripgrep,
+unzip, tmux, editors, uv, and `w3m`/`lynx` for reading pages as text. The
+`suped` user has passwordless sudo. Add whatever else your work needs.
+
+The heavy software is opt-in, so a default workspace builds in about a minute
+instead of three:
+
+```sh
+suped --with browser            # Playwright driving headless Chromium
+suped --with browser,build      # and a C toolchain
+suped rebuild --with media      # change it later; --without bakes none of it in
+```
+
+| Feature | What it adds | Cost |
+|---|---|---|
+| `browser` | Playwright + `chromium-headless-shell`, for automation and JS-heavy pages | ~910 MB |
+| `build` | build-essential and pkg-config, for packages that compile native extensions | ~340 MB |
+| `media` | ffmpeg and its codecs | ~620 MB |
+
+These are baked into the image, not installed into the container, because
+system packages do not survive `suped reset` — a browser installed at setup
+time would vanish on the next upgrade. The selection is part of the image tag,
+so `reset` and `rebuild` reproduce the same computer. `suped status` shows what
+is baked in.
+
+For research, the base is usually enough: `curl` fetches, and `w3m -dump`
+renders a page to clean text. Reach for `browser` when a page needs JavaScript
+or you are driving it for QA.
 
 ```text
 /home/suped/
