@@ -1,0 +1,21 @@
+#!/bin/sh
+# What the computer runs as its main process.
+#
+# It used to be `sleep infinity`, which is fine until something needs a daemon.
+# cron is the first: a scheduler that is installed but not running is worse than
+# no scheduler, because `crontab -e` accepts the job and it silently never runs.
+#
+# Anything else that must survive the shell closing belongs here too, or better,
+# in a crontab -- this file is not a supervisor and should not become one.
+
+set -eu
+
+if command -v cron >/dev/null 2>&1; then
+  # cron must be root. The suped user has passwordless sudo; if that ever
+  # changes, say so rather than leaving a scheduler that quietly does nothing.
+  if ! sudo -n cron 2>/dev/null; then
+    echo "suped: could not start cron; scheduled jobs will not run" >&2
+  fi
+fi
+
+exec sleep infinity

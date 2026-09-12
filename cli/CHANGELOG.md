@@ -5,6 +5,8 @@ version, so an image change is a package change.
 
 ## Unreleased
 
+- Run a scheduler. `cron` is in the base image and the computer now starts it, so `crontab -e` schedules work that actually runs. Previously cron was not installed and the container ran `sleep infinity`, so nothing would have run it. The user's crontab starts with a `PATH` that includes `~/.local/bin`, because cron gives jobs `PATH=/usr/bin:/bin` and ignores both the container environment and `/etc/environment`; wrap commands in `bash -lc` if you replace the whole crontab. A computer created before this keeps running `sleep infinity` until you `suped reset`.
+
 - Add `secrets`, which hands account access to another machine without a hosted service. `suped secrets` shows which credentials can travel and which have to be re-authenticated; `suped secrets key` creates the workspace's encryption identity; `suped secrets save <file>` seals the credentials that can travel; `suped secrets restore <file>` signs those tools back in. The sealed file is age-encrypted and safe to commit; the identity is the one thing you move between machines yourself. `sync` still carries no credentials, so exporting them is never a side effect of something else. GitHub is the first provider; each one is added only once its token round-trip is verified against a real login.
 - Add `age` to the base image, for `secrets`.
 

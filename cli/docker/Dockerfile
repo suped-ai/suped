@@ -27,6 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       age \
       python3 python3-pip python3-venv \
       sudo tmux less vim nano openssh-client procps \
+      cron \
       tzdata locales \
     && rm -rf /var/lib/apt/lists/*
 
@@ -76,11 +77,22 @@ RUN if [ "$WITH_BUILD" = "1" ]; then \
 # The system prompt lives on the box too, for anything that wants it
 COPY prompt.md /etc/suped/prompt.md
 
+# What the container runs as its main process, so cron is actually running.
+COPY suped-init /usr/local/bin/suped-init
+RUN chmod 0755 /usr/local/bin/suped-init
+
 # The user. Replace Ubuntu's default uid-1000 user with ours.
 RUN userdel -r ubuntu 2>/dev/null || true \
     && useradd -m -u 1000 -s /bin/bash suped \
     && echo "suped ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/suped \
     && chmod 0440 /etc/sudoers.d/suped
+
+# cron gives a job PATH=/usr/bin:/bin and ignores both the container environment
+# and /etc/environment, so a scheduled `gh` would not be found. Start the
+# crontab with a PATH that includes the selected tools. A crontab written from
+# scratch (`echo ... | crontab -`) replaces this line, which is why the docs say
+# to wrap commands in `bash -lc`.
+RUN printf 'PATH=/home/suped/.local/bin:/usr/local/bin:/usr/bin:/bin\n' | crontab -u suped -
 
 USER suped
 WORKDIR /home/suped
@@ -96,4 +108,4 @@ RUN mkdir -p workspace projects downloads .config .local/bin \
     && printf '\nexport PATH="$HOME/.local/bin:$PATH"\n' >> .bashrc
 
 WORKDIR /home/suped/workspace
-CMD ["sleep", "infinity"]
+CMD ["suped-init"]
