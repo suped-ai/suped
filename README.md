@@ -137,8 +137,9 @@ workflow format, or agent framework.
 ## What's on the box
 
 Ubuntu 24.04 with bash, Python, Node, git, curl, wget, jq, sqlite3, ripgrep,
-unzip, tmux, editors, uv, and `w3m`/`lynx` for reading pages as text. The
-`suped` user has passwordless sudo. Add whatever else your work needs.
+unzip, tmux, editors, and `w3m`/`lynx` for reading pages as text. The `suped`
+user has passwordless sudo. Add whatever else your work needs, or pick a
+language toolchain from the catalogue.
 
 The heavy software is opt-in, so a default workspace builds in about a minute
 instead of three:
@@ -167,12 +168,24 @@ or you are driving it for QA.
 
 ```text
 /home/suped/
-  workspace/    where shells and exec commands start
-  projects/
-  downloads/
-  .local/       selected CLIs and user-installed tools
+  workspace/    where shells and exec commands start   — travels
+  projects/     clones                                 — travels
+  notes/        durable writing                        — travels
+  scratch/      working space                          — stays here
+  downloads/    fetched things                         — stays here
+  .local/       selected CLIs and user-installed tools — reinstalled, not copied
   .config/      tool settings and workspace setup
 ```
+
+"Travels" means `suped sync` carries the git repositories under those three
+directories, by remote and branch, and nothing else. So a `notes/` directory
+that is a git repository moves with the workspace on the same terms as any
+project, with no separate mechanism; `scratch/` and `downloads/` are the places
+you can be certain stay on this machine.
+
+These directories are created when the workspace starts, so a workspace made
+before they existed gains them on its next `suped up`. Nothing existing is
+touched.
 
 The home is a Docker named volume. Files, selected CLIs, and saved logins
 survive stops, restarts, reset, and rebuild. Additional system packages

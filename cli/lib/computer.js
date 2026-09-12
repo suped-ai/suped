@@ -41,6 +41,19 @@ export const IMAGE = imageFor();
 export const CONTAINER = process.env.SUPED_CONTAINER || 'suped';
 export const VOLUME = process.env.SUPED_VOLUME || 'suped-home';
 export const HOME = '/home/suped';
+/**
+ * The home a workspace always has. Organised by what a move carries: `sync`
+ * carries git repositories under workspace/, projects/ and notes/ as remotes,
+ * and carries nothing else -- so scratch/ and downloads/ are the places you can
+ * be sure are local to this machine.
+ *
+ * Docker copies the image's skeleton into a named volume only on that volume's
+ * FIRST mount, so anything added here would never reach an existing workspace.
+ * That is not hypothetical: it is how uv came to be missing from every
+ * workspace created before it was added. ensureHomeSkeleton is the answer, and
+ * cli/docker/suped-init carries the same list for containers started directly.
+ */
+export const HOME_SKELETON = ['workspace', 'projects', 'notes', 'scratch', 'downloads', '.config', '.local/bin'];
 export const WORKDIR = `${HOME}/workspace`;
 export const USER = 'suped';
 
@@ -182,6 +195,16 @@ export function createContainer({ image = IMAGE, name = CONTAINER, volume = VOLU
  * added afterwards. Written once and kept in the home: a later container is
  * built from the same image, and an existing baseline is the older, truer one.
  */
+/**
+ * Create any missing skeleton directory. Idempotent, silent when there is
+ * nothing to do, and never touches anything that already exists -- it is safe
+ * to run against a workspace that has been in use for months.
+ */
+export function ensureHomeSkeleton() {
+  const dirs = HOME_SKELETON.map((dir) => `'${dir}'`).join(' ');
+  return capture(['bash', '-lc', `cd ~ && mkdir -p ${dirs}`]).status === 0;
+}
+
 export function recordBasePackages() {
   capture(['bash', '-lc',
     '[ -f ~/.config/suped/base-packages ] || { mkdir -p ~/.config/suped && apt-mark showmanual | sort > ~/.config/suped/base-packages; }']);
@@ -226,7 +249,7 @@ export function removeVolume(volume = VOLUME) {
  * Make sure image, volume and a running container exist.
  * Returns { created: boolean, built: boolean, stale: boolean }.
  */
-export function ensureUp({ runArgs = [], features = [], log = () => {} } = {}) {
+export function ensureUp({ runArgs = [], features = [], migrate = false, log = () => {} } = {}) {
   if (!hasDocker()) {
     throw new Error('Docker is not available. Install Docker (https://docs.docker.com/get-docker/) and make sure the daemon is running.');
   }
@@ -250,6 +273,7 @@ export function ensureUp({ runArgs = [], features = [], log = () => {} } = {}) {
   }
 
   let created = false;
+  let started = false;
   let stale = false;
   if (!existing) {
     log(`creating container ${CONTAINER}`);
@@ -261,9 +285,13 @@ export function ensureUp({ runArgs = [], features = [], log = () => {} } = {}) {
     if (features.length && normalizeFeatures(features).join(',') !== selected.join(',')) {
       log(`--with was ignored because the computer already exists; use "suped rebuild --with ${normalizeFeatures(features).join(',')}" to change what is baked in`);
     }
-    if (containerState() !== 'running') startContainer();
+    if (containerState() !== 'running') { startContainer(); started = true; }
     stale = containerImage() !== image;
   }
+  // A container that was already running has an older suped-init, so the
+  // skeleton has to be brought up to date from here. Deliberately not done on
+  // the `exec` path: an agent runs that constantly and it must stay cheap.
+  if (created || started || migrate) ensureHomeSkeleton();
   return { created, built, stale, image, features: selected };
 }
 
@@ -285,6 +313,7 @@ export function resetComputer({ runArgs = [], features = null, rebuild = false, 
   if (state !== null) removeContainer();
   createContainer({ image, runArgs: retainedArgs, features: selected });
   writeCrontab(crontab);
+  ensureHomeSkeleton();
   recordBasePackages();
   return { image, features: selected };
 }

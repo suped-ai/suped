@@ -162,3 +162,54 @@ test('CLI exec retains the existing quoted shell-command interface', async (t) =
   const execution = calls.find(({ args }) => args[0] === 'exec');
   assert.deepEqual(execution.args.slice(-3), ['bash', '-lc', 'echo saved > ~/workspace/saved.txt']);
 });
+
+// --- the home skeleton and its migration ---
+
+const skeletonCalls = (calls) => calls.filter(({ args }) =>
+  args.includes('bash') && args.some((arg) => typeof arg === 'string' && arg.startsWith('cd ~ && mkdir -p')));
+
+test('the skeleton the image seeds and the one the CLI repairs cannot drift apart', async () => {
+  // Two files have to name the same directories: the container's own init, for
+  // a container started directly, and HOME_SKELETON, for a container that was
+  // already running when Suped was upgraded. A mismatch is silent.
+  const { readFileSync } = await import('node:fs');
+  const { fileURLToPath } = await import('node:url');
+  const read = (name) => readFileSync(fileURLToPath(new URL(`../docker/${name}`, import.meta.url)), 'utf8');
+  for (const [name, pattern] of [['suped-init', /mkdir -p ([^\n]+)/], ['Dockerfile', /RUN mkdir -p ([^\\\n]+)/]]) {
+    const listed = read(name).match(pattern)[1].trim().split(/\s+/);
+    assert.deepEqual(listed, computer.HOME_SKELETON, `${name} must list exactly HOME_SKELETON`);
+  }
+});
+
+test('a workspace that was already running gains missing directories on up, without touching anything', async (t) => {
+  const calls = mockDocker(t, runningComputer);
+  assert.equal(await main(['up']), 0);
+  const repair = skeletonCalls(calls);
+  assert.equal(repair.length, 1, 'up repairs the skeleton of a running workspace');
+  const script = repair[0].args.at(-1);
+  for (const dir of computer.HOME_SKELETON) assert.ok(script.includes(`'${dir}'`), dir);
+  // mkdir -p only. Nothing that could remove or overwrite existing work.
+  assert.doesNotMatch(script, /\brm\b|\bmv\b|>|rsync|chown|chmod/);
+});
+
+test('exec never pays for the skeleton repair', async (t) => {
+  // An agent runs exec constantly; a Docker round trip per command is the cost
+  // this deliberately avoids. A running container's init has already done it.
+  const calls = mockDocker(t, runningComputer);
+  await main(['exec', 'true']);
+  assert.deepEqual(skeletonCalls(calls), [], 'exec must not add a Docker round trip');
+});
+
+test('a workspace that had to be started is repaired even without being asked', (t) => {
+  // Its init may predate the directories, so starting it is not enough.
+  const calls = mockDocker(t, (args) => (args[0] === 'container' && args[1] === 'inspect' && args[2] === '-f'
+    && args[3] === '{{.State.Status}}' ? { stdout: 'exited' } : runningComputer(args)));
+  computer.ensureUp({});
+  assert.equal(skeletonCalls(calls).length, 1);
+});
+
+test('a replacement container has its skeleton ensured before it is used', (t) => {
+  const calls = mockDocker(t, runningComputer);
+  computer.resetComputer();
+  assert.equal(skeletonCalls(calls).length, 1, 'reset ensures the skeleton');
+});

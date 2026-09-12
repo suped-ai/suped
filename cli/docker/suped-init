@@ -10,6 +10,13 @@
 
 set -eu
 
+# The home a workspace always has. Docker seeds the image's skeleton into a
+# named volume only on that volume's first mount, so a directory added to the
+# image later would never appear in an existing home. Creating them at every
+# start is idempotent and costs nothing. Keep this list in step with
+# HOME_SKELETON in cli/lib/computer.js -- a test checks that they agree.
+cd "$HOME" && mkdir -p workspace projects notes scratch downloads .config .local/bin
+
 if command -v cron >/dev/null 2>&1; then
   # cron must be root. The suped user has passwordless sudo; if that ever
   # changes, say so rather than leaving a scheduler that quietly does nothing.
