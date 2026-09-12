@@ -8,7 +8,36 @@ import { fileURLToPath } from 'node:url';
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
 export const VERSION = pkg.version;
-export const IMAGE = process.env.SUPED_IMAGE || `suped-computer:${VERSION}`;
+
+/**
+ * Heavy software is opt-in and baked into the image rather than installed into
+ * the container, because system packages do not survive `reset`. The selection
+ * is part of the image tag, so reset and rebuild reproduce the same computer.
+ */
+export const FEATURES = {
+  browser: { arg: 'WITH_BROWSER', summary: 'Playwright driving headless Chromium, for automation and JS-heavy pages' },
+  build: { arg: 'WITH_BUILD', summary: 'a C toolchain, for packages that compile native extensions' },
+  media: { arg: 'WITH_MEDIA', summary: 'ffmpeg and its codecs' },
+};
+
+/** Validate, lower-case, de-duplicate and sort, so one selection is one tag. */
+export function normalizeFeatures(features = []) {
+  const list = [...new Set(features.map((feature) => String(feature).trim().toLowerCase()).filter(Boolean))];
+  const unknown = list.filter((feature) => !Object.hasOwn(FEATURES, feature));
+  if (unknown.length) {
+    throw new Error(`unknown feature ${unknown.join(', ')}; choose from ${Object.keys(FEATURES).join(', ')}`);
+  }
+  return list.sort();
+}
+
+/** An explicit SUPED_IMAGE always wins; otherwise the tag carries the selection. */
+export function imageFor(features = []) {
+  if (process.env.SUPED_IMAGE) return process.env.SUPED_IMAGE;
+  const list = normalizeFeatures(features);
+  return list.length ? `suped-computer:${VERSION}-${list.join('.')}` : `suped-computer:${VERSION}`;
+}
+
+export const IMAGE = imageFor();
 export const CONTAINER = process.env.SUPED_CONTAINER || 'suped';
 export const VOLUME = process.env.SUPED_VOLUME || 'suped-home';
 export const HOME = '/home/suped';
@@ -17,6 +46,7 @@ export const USER = 'suped';
 
 const DOCKER_DIR = fileURLToPath(new URL('../docker/', import.meta.url));
 const RUN_ARGS_LABEL = 'dev.suped.run-args';
+const FEATURES_LABEL = 'dev.suped.features';
 
 export function systemPrompt() {
   return readFileSync(new URL('../docker/prompt.md', import.meta.url), 'utf8').trim();
@@ -47,9 +77,13 @@ export function imageExists(image = IMAGE) {
   return docker(['image', 'inspect', image]).status === 0;
 }
 
-export function buildImage(image = IMAGE, { noCache = false } = {}) {
+export function buildImage(image = IMAGE, { noCache = false, features = [] } = {}) {
   const args = ['build', '-t', image];
   if (noCache) args.push('--no-cache');
+  const selected = new Set(normalizeFeatures(features));
+  for (const [name, { arg }] of Object.entries(FEATURES)) {
+    args.push('--build-arg', `${arg}=${selected.has(name) ? '1' : '0'}`);
+  }
   args.push(DOCKER_DIR);
   const r = docker(args, { inherit: true });
   if (r.status !== 0) throw new Error('image build failed');
@@ -73,6 +107,14 @@ export function containerState(name = CONTAINER) {
 export function containerImage(name = CONTAINER) {
   const r = docker(['container', 'inspect', '-f', '{{.Config.Image}}', name]);
   return r.status === 0 ? r.stdout : null;
+}
+
+/** What was baked into this computer's image. Absent on pre-0.3.0 containers. */
+export function containerFeatures(name = CONTAINER) {
+  const r = docker(['container', 'inspect', '-f', `{{index .Config.Labels "${FEATURES_LABEL}"}}`, name]);
+  if (r.status !== 0) return [];
+  try { return normalizeFeatures(r.stdout.split(',')); }
+  catch { return []; }
 }
 
 /** Recover the original CLI options, including computers created before labels. */
@@ -114,7 +156,7 @@ function mergeRunArgs(saved, supplied) {
  * Create the container (does not attach). `runArgs` are extra `docker run`
  * flags, e.g. ['-p', '3000:3000', '-v', 'C:/data:/home/suped/data'].
  */
-export function createContainer({ image = IMAGE, name = CONTAINER, volume = VOLUME, runArgs = [] } = {}) {
+export function createContainer({ image = IMAGE, name = CONTAINER, volume = VOLUME, runArgs = [], features = [] } = {}) {
   const args = [
     'run', '-d',
     '--name', name,
@@ -122,6 +164,7 @@ export function createContainer({ image = IMAGE, name = CONTAINER, volume = VOLU
     '--init',
     '--restart', 'unless-stopped',
     '--label', `${RUN_ARGS_LABEL}=${JSON.stringify(runArgs)}`,
+    '--label', `${FEATURES_LABEL}=${normalizeFeatures(features).join(',')}`,
     '-v', `${volume}:${HOME}`,
     '-w', WORKDIR,
     ...runArgs,
@@ -166,15 +209,21 @@ export function removeVolume(volume = VOLUME) {
  * Make sure image, volume and a running container exist.
  * Returns { created: boolean, built: boolean, stale: boolean }.
  */
-export function ensureUp({ runArgs = [], log = () => {} } = {}) {
+export function ensureUp({ runArgs = [], features = [], log = () => {} } = {}) {
   if (!hasDocker()) {
     throw new Error('Docker is not available. Install Docker (https://docs.docker.com/get-docker/) and make sure the daemon is running.');
   }
 
+  // An existing computer keeps the image it was built with; changing what is
+  // baked in is a rebuild, not something a plain start should do behind you.
+  const existing = containerState() !== null;
+  const selected = normalizeFeatures(existing ? containerFeatures() : features);
+  const image = imageFor(selected);
+
   let built = false;
-  if (!imageExists()) {
-    log(`building ${IMAGE} (first run; this takes a few minutes)`);
-    buildImage();
+  if (!imageExists(image)) {
+    log(`building ${image} (first run; this takes a minute)`);
+    buildImage(image, { features: selected });
     built = true;
   }
 
@@ -185,33 +234,39 @@ export function ensureUp({ runArgs = [], log = () => {} } = {}) {
 
   let created = false;
   let stale = false;
-  const state = containerState();
-  if (state === null) {
+  if (!existing) {
     log(`creating container ${CONTAINER}`);
-    createContainer({ runArgs });
+    createContainer({ image, runArgs, features: selected });
     recordBasePackages();
     created = true;
   } else {
     if (runArgs.length) log('port/mount options were ignored because the computer already exists; use "suped reset" with those options to apply them');
-    if (state !== 'running') startContainer();
-    stale = containerImage() !== IMAGE;
+    if (features.length && normalizeFeatures(features).join(',') !== selected.join(',')) {
+      log(`--with was ignored because the computer already exists; use "suped rebuild --with ${normalizeFeatures(features).join(',')}" to change what is baked in`);
+    }
+    if (containerState() !== 'running') startContainer();
+    stale = containerImage() !== image;
   }
-  return { created, built, stale };
+  return { created, built, stale, image, features: selected };
 }
 
 /** Prepare the replacement before removing the computer; retain its connections. */
-export function resetComputer({ runArgs = [], rebuild = false, noCache = false, log = () => {} } = {}) {
+export function resetComputer({ runArgs = [], features = null, rebuild = false, noCache = false, log = () => {} } = {}) {
   if (!hasDocker()) throw new Error('Docker is not available. Make sure the daemon is running.');
   const state = containerState();
   const retainedArgs = mergeRunArgs(state === null ? [] : containerRunArgs(), runArgs);
-  if (rebuild || !imageExists()) {
-    log(`${rebuild ? 'rebuilding' : 'building'} ${IMAGE}`);
-    buildImage(IMAGE, { noCache });
+  // Supplying --with replaces the selection; leaving it off keeps what is there.
+  const selected = normalizeFeatures(features === null ? (state === null ? [] : containerFeatures()) : features);
+  const image = imageFor(selected);
+  if (rebuild || !imageExists(image)) {
+    log(`${rebuild ? 'rebuilding' : 'building'} ${image}`);
+    buildImage(image, { noCache, features: selected });
   }
   if (!volumeExists()) createVolume();
   if (state !== null) removeContainer();
-  createContainer({ runArgs: retainedArgs });
+  createContainer({ image, runArgs: retainedArgs, features: selected });
   recordBasePackages();
+  return { image, features: selected };
 }
 
 function execArgs({ interactive = false, stdin = true } = {}) {
@@ -252,14 +307,18 @@ export function capture(command, { input } = {}) {
 
 export function status() {
   const available = hasDocker();
+  const state = available ? containerState() : null;
+  const features = available && state !== null ? containerFeatures() : [];
+  const image = imageFor(features);
   return {
     docker: available,
-    image: IMAGE,
-    imageExists: available ? imageExists() : null,
+    image,
+    imageExists: available ? imageExists(image) : null,
     volume: VOLUME,
     volumeExists: available ? volumeExists() : null,
     container: CONTAINER,
-    state: available ? containerState() : null,
+    state,
     containerImage: available ? containerImage() : null,
+    features,
   };
 }

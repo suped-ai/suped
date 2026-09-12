@@ -55,16 +55,38 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-      - name: build image
-        run: docker build -t "$SUPED_IMAGE" cli/docker
-      - name: tools present
+      # The base is what a first run gets. Check it has the everyday tools and,
+      # just as importantly, that the optional software really is absent -- that
+      # is the whole point of building it in about a minute.
+      - name: build base image
+        run: docker build -t suped-computer:ci-base cli/docker
+      - name: base tools present, optional software absent
+        run: |
+          docker run --rm suped-computer:ci-base bash -lc '
+            set -e
+            node -v; python3 --version; git --version; jq --version; sqlite3 --version
+            rg --version | head -1; uv --version; w3m -version | head -1
+            test -f /etc/suped/prompt.md
+            sudo -n true
+            for absent in ffmpeg playwright cc; do
+              if command -v "$absent" >/dev/null; then
+                echo "$absent must not be in the base image" >&2
+                exit 1
+              fi
+            done
+          '
+      # The end-to-end check launches Chromium, so it runs against an image with
+      # the optional software built in.
+      - name: build image with optional software
+        run: |
+          docker build -t "$SUPED_IMAGE" \
+            --build-arg WITH_BROWSER=1 --build-arg WITH_MEDIA=1 --build-arg WITH_BUILD=1 \
+            cli/docker
+      - name: optional software present when it is asked for
         run: |
           docker run --rm "$SUPED_IMAGE" bash -lc '
             set -e
-            node -v; python3 --version; git --version; jq --version; sqlite3 --version
-            ffmpeg -version | head -1; rg --version | head -1; uv --version; playwright --version
-            test -f /etc/suped/prompt.md
-            sudo -n true
+            ffmpeg -version | head -1; playwright --version; cc --version | head -1
           '
       - name: CLI, selected tools, persistence, and browser
         run: node cli/test/integration.js

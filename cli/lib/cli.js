@@ -26,7 +26,17 @@ usage
 options (used when the container is first created)
   -p, --publish <host:container>   publish a port (repeatable)
   -v, --volume  <host:container>   mount an extra host path (repeatable)
+  --with <features>               bake optional software into the image (comma separated)
+  --without                       bake none of it in
   --skip-auth                     install selected tools without signing in (setup)
+
+optional software (--with), baked into the image so it survives reset
+  browser   Playwright driving headless Chromium, for automation and JS-heavy pages
+  build     a C toolchain, for packages that compile native extensions
+  media     ffmpeg and its codecs
+
+the base reads pages with curl, w3m and lynx, which covers most research without a browser.
+change what is baked in with "suped rebuild --with browser"; the selection is part of the image tag.
 
 exec accepts one quoted shell command, or a program followed by exact arguments.
 put Suped's port/mount options before exec; everything after exec belongs to the command.
@@ -48,13 +58,31 @@ export function parseArgs(argv) {
   const runArgs = [];
   const flags = new Set();
   const rest = [];
+  let features = null;
+  const addFeatures = (value) => {
+    features = (features ?? []).concat(value.split(/[\s,]+/).filter(Boolean));
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--') {
       rest.push(...argv.slice(i + 1));
       break;
     }
-    if (a === '-p' || a === '--publish' || a === '-v' || a === '--volume') {
+    if (a === '--with') {
+      const value = argv[++i];
+      if (!value || value.startsWith('-')) throw new Error('missing value for --with (e.g. --with browser,media)');
+      addFeatures(value);
+    }
+    else if (a.startsWith('--with=')) {
+      const value = a.slice('--with='.length);
+      if (!value) throw new Error('missing value for --with (e.g. --with browser,media)');
+      addFeatures(value);
+    }
+    else if (a === '--without') {
+      // An explicit empty selection, so "rebuild --without" strips extras.
+      features = features ?? [];
+    }
+    else if (a === '-p' || a === '--publish' || a === '-v' || a === '--volume') {
       const value = argv[++i];
       if (!value || value.startsWith('-')) throw new Error('missing value for -p/--publish or -v/--volume');
       runArgs.push(a === '-p' || a === '--publish' ? '-p' : '-v', value);
@@ -76,7 +104,7 @@ export function parseArgs(argv) {
   }
   if (runArgs.includes(undefined)) throw new Error('missing value for -p/--publish or -v/--volume');
   const [command = 'shell', ...args] = rest;
-  return { command, args, runArgs, flags };
+  return { command, args, runArgs, flags, features };
 }
 
 function warnIfStale(stale) {
@@ -90,7 +118,7 @@ async function firstRunSetup() {
 }
 
 export async function main(argv) {
-  const { command, args, runArgs, flags } = parseArgs(argv);
+  const { command, args, runArgs, flags, features } = parseArgs(argv);
 
   if (flags.has('help') || flags.has('h') || command === 'help') {
     process.stdout.write(HELP);
@@ -103,7 +131,7 @@ export async function main(argv) {
 
   switch (command) {
     case 'shell': {
-      const { stale } = computer.ensureUp({ runArgs, log });
+      const { stale } = computer.ensureUp({ runArgs, features: features ?? [], log });
       warnIfStale(stale);
       const setupStatus = await firstRunSetup();
       if (setupStatus) return setupStatus;
@@ -111,7 +139,7 @@ export async function main(argv) {
     }
 
     case 'up': {
-      const { created, stale } = computer.ensureUp({ runArgs, log });
+      const { created, stale } = computer.ensureUp({ runArgs, features: features ?? [], log });
       warnIfStale(stale);
       const setupStatus = await firstRunSetup();
       if (setupStatus) return setupStatus;
@@ -121,14 +149,14 @@ export async function main(argv) {
 
     case 'exec': {
       if (args.length === 0) throw new Error('exec: nothing to run. usage: suped exec <command...>');
-      const { stale } = computer.ensureUp({ runArgs, log });
+      const { stale } = computer.ensureUp({ runArgs, features: features ?? [], log });
       warnIfStale(stale);
       return computer.exec(args.length === 1 ? args[0] : args);
     }
 
     case 'setup': {
       if (args.length) (await import('./tools.js')).getTools(args);
-      const { stale } = computer.ensureUp({ runArgs, log });
+      const { stale } = computer.ensureUp({ runArgs, features: features ?? [], log });
       warnIfStale(stale);
       const { setup } = await import('./setup.js');
       return setup({ tools: args.length ? args : null, authenticate: !flags.has('skip-auth') });
@@ -136,7 +164,7 @@ export async function main(argv) {
 
     case 'tools': {
       if (args.length) (await import('./tools.js')).getTools(args);
-      const { stale } = computer.ensureUp({ runArgs, log });
+      const { stale } = computer.ensureUp({ runArgs, features: features ?? [], log });
       warnIfStale(stale);
       const { showTools } = await import('./setup.js');
       return showTools(args);
@@ -145,7 +173,7 @@ export async function main(argv) {
     case 'login': {
       if (args.length === 0) throw new Error('login: choose at least one tool. Run "suped catalog" for choices.');
       (await import('./tools.js')).getTools(args);
-      const { stale } = computer.ensureUp({ runArgs, log });
+      const { stale } = computer.ensureUp({ runArgs, features: features ?? [], log });
       warnIfStale(stale);
       const { loginTools } = await import('./setup.js');
       return loginTools(args);
@@ -166,6 +194,7 @@ export async function main(argv) {
       const rows = [
         ['docker', s.docker ? 'available' : 'NOT AVAILABLE'],
         ['image', `${s.image} ${s.docker ? (s.imageExists ? '(built)' : '(not built)') : '(unknown)'}`],
+        ['baked in', s.features.length ? s.features.join(', ') : '(base only)'],
         ['home', `${s.volume} ${s.docker ? (s.volumeExists ? '(exists)' : '(none)') : '(unknown)'}`],
         ['container', `${s.container} ${s.docker ? (s.state ?? '(none)') : '(unknown)'}`],
       ];
@@ -186,13 +215,13 @@ export async function main(argv) {
     }
 
     case 'reset': {
-      computer.resetComputer({ runArgs, log });
+      computer.resetComputer({ runArgs, features, log });
       log('container recreated; home kept');
       return 0;
     }
 
     case 'rebuild': {
-      computer.resetComputer({ runArgs, rebuild: true, noCache: flags.has('no-cache'), log });
+      computer.resetComputer({ runArgs, features, rebuild: true, noCache: flags.has('no-cache'), log });
       log('rebuilt; home kept');
       return 0;
     }
