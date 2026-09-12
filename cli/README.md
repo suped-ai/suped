@@ -10,8 +10,10 @@ persistent home between sessions.
 npx suped@latest
 ```
 
-Version 0.2.0 includes guided setup, 17 optional CLIs, and nine official MCP
-connections.
+Version 0.3.0 includes guided setup, 17 optional CLIs, nine official MCP
+connections, a base image that builds in about a minute with the heavy software
+opt-in, workspaces that move between machines, encrypted account handoff, and a
+scheduler.
 
 ## Requirements
 
