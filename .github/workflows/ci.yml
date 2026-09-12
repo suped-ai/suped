@@ -65,7 +65,7 @@ jobs:
           docker run --rm suped-computer:ci-base bash -lc '
             set -e
             node -v; python3 --version; git --version; jq --version; sqlite3 --version
-            rg --version | head -1; uv --version; w3m -version | head -1
+            rg --version | head -1; uv --version; w3m -version | head -1; age --version
             test -f /etc/suped/prompt.md
             sudo -n true
             for absent in ffmpeg playwright cc; do

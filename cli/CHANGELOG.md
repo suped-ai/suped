@@ -5,6 +5,9 @@ version, so an image change is a package change.
 
 ## Unreleased
 
+- Add `secrets`, which hands account access to another machine without a hosted service. `suped secrets` shows which credentials can travel and which have to be re-authenticated; `suped secrets key` creates the workspace's encryption identity; `suped secrets save <file>` seals the credentials that can travel; `suped secrets restore <file>` signs those tools back in. The sealed file is age-encrypted and safe to commit; the identity is the one thing you move between machines yourself. `sync` still carries no credentials, so exporting them is never a side effect of something else. GitHub is the first provider; each one is added only once its token round-trip is verified against a real login.
+- Add `age` to the base image, for `secrets`.
+
 - Make the heavy software optional. The base image no longer carries Playwright/Chromium, ffmpeg, or a C toolchain: it builds in about a minute instead of three and is roughly a quarter of the size. Choose extras with `--with browser,build,media` when the computer is created, or change them later with `suped rebuild --with ...` (`--without` bakes none of them in). `suped status` reports what is baked in.
 - Bake optional software into the image rather than installing it into the container. System packages do not survive `reset`, so a browser installed at setup time would disappear on the next upgrade. The selection is part of the image tag, and `reset`/`rebuild` keep it unless `--with`/`--without` says otherwise.
 - Use Playwright's `chromium-headless-shell` instead of full Chromium for `--with browser`. Same Playwright API for automation and JS-heavy pages, about 600 MB smaller.
