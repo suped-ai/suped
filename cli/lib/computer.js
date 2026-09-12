@@ -132,6 +132,16 @@ export function createContainer({ image = IMAGE, name = CONTAINER, volume = VOLU
   if (r.status !== 0) throw new Error(`could not create container: ${r.stderr}`);
 }
 
+/**
+ * Record the packages the image ships with, so `suped sync` can tell what was
+ * added afterwards. Written once and kept in the home: a later container is
+ * built from the same image, and an existing baseline is the older, truer one.
+ */
+export function recordBasePackages() {
+  capture(['bash', '-lc',
+    '[ -f ~/.config/suped/base-packages ] || { mkdir -p ~/.config/suped && apt-mark showmanual | sort > ~/.config/suped/base-packages; }']);
+}
+
 export function startContainer(name = CONTAINER) {
   const r = docker(['start', name]);
   if (r.status !== 0) throw new Error(`could not start container: ${r.stderr}`);
@@ -179,6 +189,7 @@ export function ensureUp({ runArgs = [], log = () => {} } = {}) {
   if (state === null) {
     log(`creating container ${CONTAINER}`);
     createContainer({ runArgs });
+    recordBasePackages();
     created = true;
   } else {
     if (runArgs.length) log('port/mount options were ignored because the computer already exists; use "suped reset" with those options to apply them');
@@ -200,6 +211,7 @@ export function resetComputer({ runArgs = [], rebuild = false, noCache = false, 
   if (!volumeExists()) createVolume();
   if (state !== null) removeContainer();
   createContainer({ runArgs: retainedArgs });
+  recordBasePackages();
 }
 
 function execArgs({ interactive = false, stdin = true } = {}) {
