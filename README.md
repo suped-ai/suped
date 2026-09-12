@@ -204,9 +204,19 @@ suped move restore ./my-workspace   # on the other machine
 ```
 
 Your identity file is deliberately **not** in that directory. Everything written
-there is safe to commit; the identity is the one thing that is not, and you move
-it yourself, once — `suped secrets key` prints where it lives. Without it the
-sealed file cannot be opened, by you or anyone else.
+there is safe to commit; the identity is the one thing that is not. Without it
+the sealed file cannot be opened, by you or anyone else.
+
+Move it once, in one step:
+
+```sh
+suped secrets key --show | ssh other-machine suped secrets key --import
+```
+
+`--show` prints the key and nothing else to stdout, so it pipes cleanly; the
+explanation goes to stderr. `--import` verifies the key on a staged copy before
+activating it, and refuses to replace an identity that is already there unless
+you pass `--replace` — anything sealed only to the old one becomes unopenable.
 
 The two halves stay two files on purpose. The manifest is plain text meant to be
 read in a diff; the sealed store is opaque and changes completely every time it
@@ -259,6 +269,8 @@ suped move restore <dir>    rebuild that workspace here, and sign its tools back
 suped sync               show what defines this workspace, and what would not move
 suped sync save <file>   write the workspace to a portable file (no credentials)
 suped sync restore <file>  install that workspace's tools and clone its projects
+suped secrets            show the account store, and what is waiting on you
+suped secrets key [--show|--import [--replace]]   make, print, or install the identity
 suped status             show Docker/container/image/volume state
 suped stop               stop the computer; keep its files
 suped reset              recreate the container; keep home, ports, and mounts
