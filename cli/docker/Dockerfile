@@ -103,8 +103,13 @@ ENV PATH="/home/suped/.local/bin:${PATH}"
 
 # Home skeleton. Docker copies this into the named volume on first mount,
 # so it persists and grows with whatever you do afterwards.
+#
+# uv used to be installed here from astral.sh's shell script. It was the one
+# unpinned download in the project, and seeding the skeleton only reaches a
+# volume on its first mount, so no existing workspace ever got it. It is part
+# of the Python selection now, pinned and checksum-verified like everything
+# else in the catalogue.
 RUN mkdir -p workspace projects downloads .config .local/bin \
-    && curl -LsSf https://astral.sh/uv/install.sh | sh \
     && printf '\nexport PATH="$HOME/.local/bin:$PATH"\n' >> .bashrc
 
 WORKDIR /home/suped/workspace

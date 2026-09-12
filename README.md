@@ -51,10 +51,11 @@ suped tools gitlab vercel neon       # check this stack's account access
 suped setup python go                # add language toolchains
 ```
 
-Node.js is already in the base image. The Languages category adds the other
-runtimes an agent needs to run code locally, each pinned and checksum-verified,
-and unpacked into the persistent home rather than the image — so picking one up
-later never means rebuilding. Python arrives with `uv` and `uvx` alongside it.
+Node.js and Ubuntu's Python are already in the base image. The Languages
+category adds the other runtimes an agent needs to run code locally, each
+pinned and checksum-verified, and unpacked into the persistent home rather than
+the image — so picking one up later never means rebuilding. Selecting Python
+brings `uv` and `uvx` and puts a current CPython ahead of Ubuntu's on PATH.
 
 Suped uses the provider CLIs for login. Credentials stay in their normal
 locations under `/home/suped`; Suped stores only your tool selections. Logins

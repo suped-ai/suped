@@ -5,6 +5,7 @@ version, so an image change is a package change.
 
 ## Unreleased
 
+- uv is pinned and checksum-verified, and comes with the Python selection rather than the base image. It was installed from `astral.sh/uv/install.sh` at image build time — the one unpinned download in the project — and it was written into the home skeleton, which Docker only copies into a volume on its first mount, so no existing workspace ever received it. Ubuntu's `python3` is still in the base; selecting Python puts a current CPython and `uv` ahead of it on PATH.
 - Add a **Languages** category: Python 3.14.7 (with `uv` and `uvx`), Go 1.27.1, Deno 2.9.6, and Bun 1.4.2. Node.js was already in the base image; these are the other runtimes an agent needs to run code, build, and test locally. Each is pinned and checksum-verified and unpacks into the persistent home rather than the image, so adding one later does not mean rebuilding. `suped setup python go`, or choose them during guided setup.
 - Add **Herdr** to the catalogue, under a new Workspace category: a terminal workspace manager for running several agents side by side and reattaching later. `suped setup herdr`, or choose it during guided setup.
 - Tools can be install-only. Setup no longer offers to connect an account for something that has none, `suped tools` reports it as installed rather than "connection not verified", and `suped login` says why it cannot be connected instead of failing a login that could never exist.
