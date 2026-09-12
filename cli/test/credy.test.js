@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  createAuthsy, assertRecipient, assertId, validateEntry, validateSealed, redactEntry,
+  createCredy, assertRecipient, assertId, validateEntry, validateSealed, redactEntry,
   FORMAT, KINDS, STATUSES, DEFAULT_IDENTITY,
-} from '../lib/authsy.js';
+} from '../lib/credy.js';
 
 const RECIPIENT = 'age1sx7zeautvxlhnw3ut6vx0lxzxdxhwszvmrxtc8dwyv4usadf7s3qxjh6c5';
 const ARMOR = (body) => `-----BEGIN AGE ENCRYPTED FILE-----\n${body}\n-----END AGE ENCRYPTED FILE-----\n`;
@@ -40,7 +40,7 @@ function fixture({ hasAge = true, identity = RECIPIENT, decryptError = null } = 
     }
     throw new assert.AssertionError({ message: `unexpected command ${JSON.stringify(argv)}` });
   };
-  return { authsy: createAuthsy({ capture, now: () => '2026-09-12T00:00:00.000Z' }), calls, vault: () => vault };
+  return { credy: createCredy({ capture, now: () => '2026-09-12T00:00:00.000Z' }), calls, vault: () => vault };
 }
 
 test('a recipient must actually be an age public key', () => {
@@ -114,13 +114,13 @@ test('a mailbox password is hidden too', () => {
 test('entries round-trip through seal and unseal', () => {
   const f = fixture();
   const entries = { resend: ACCOUNT, github: { kind: 'token', value: 'gho_exampletoken' } };
-  const ciphertext = f.authsy.seal({ entries, recipient: RECIPIENT });
-  assert.deepEqual(f.authsy.unseal({ ciphertext }), entries);
+  const ciphertext = f.credy.seal({ entries, recipient: RECIPIENT });
+  assert.deepEqual(f.credy.unseal({ ciphertext }), entries);
 });
 
 test('nothing secret survives into the ciphertext', () => {
   const f = fixture();
-  const ciphertext = f.authsy.seal({ entries: { resend: ACCOUNT }, recipient: RECIPIENT });
+  const ciphertext = f.credy.seal({ entries: { resend: ACCOUNT }, recipient: RECIPIENT });
   for (const secret of ['a-long-enough-password', 'aaaa-bbbb-cccc', 're_a_long_api_key_value']) {
     assert.equal(ciphertext.includes(secret), false, `${secret} leaked`);
   }
@@ -131,9 +131,9 @@ test('nothing secret survives into the ciphertext', () => {
 
 test('sealing refuses a bad entry before running anything', () => {
   const f = fixture();
-  assert.throws(() => f.authsy.seal({ entries: { x: { kind: 'nope' } }, recipient: RECIPIENT }), /unknown kind/);
-  assert.throws(() => f.authsy.seal({ entries: 'nope', recipient: RECIPIENT }), /entries must be an object/);
-  assert.throws(() => f.authsy.seal({ entries: {}, recipient: 'evil; rm -rf /' }), /not an age recipient/);
+  assert.throws(() => f.credy.seal({ entries: { x: { kind: 'nope' } }, recipient: RECIPIENT }), /unknown kind/);
+  assert.throws(() => f.credy.seal({ entries: 'nope', recipient: RECIPIENT }), /entries must be an object/);
+  assert.throws(() => f.credy.seal({ entries: {}, recipient: 'evil; rm -rf /' }), /not an age recipient/);
   assert.equal(f.calls.some((call) => call.argv.includes('--armor')), false, 'age must not have run');
 });
 
@@ -148,7 +148,7 @@ test('a format 1 file still opens, read as tokens', () => {
   });
 });
 
-test('a payload from a newer authsy is refused rather than half-read', () => {
+test('a payload from a newer credy is refused rather than half-read', () => {
   assert.throws(() => validateSealed({ format: 99, entries: {} }), /unsupported format 99/);
   assert.throws(() => validateSealed(null), /expected an object/);
   assert.throws(() => validateSealed({ format: FORMAT, entries: [] }), /entries must be an object/);
@@ -158,28 +158,28 @@ test('a payload from a newer authsy is refused rather than half-read', () => {
 
 test('missing age is reported before anything else is attempted', () => {
   const f = fixture({ hasAge: false });
-  assert.equal(f.authsy.available(), false);
-  assert.throws(() => f.authsy.seal({ entries: {}, recipient: RECIPIENT }), /age is not installed/);
-  assert.throws(() => f.authsy.unseal({ ciphertext: ARMOR('x') }), /age is not installed/);
+  assert.equal(f.credy.available(), false);
+  assert.throws(() => f.credy.seal({ entries: {}, recipient: RECIPIENT }), /age is not installed/);
+  assert.throws(() => f.credy.unseal({ ciphertext: ARMOR('x') }), /age is not installed/);
 });
 
 test('an identity is created only when there is not one already', () => {
   const missing = fixture({ identity: null });
-  assert.deepEqual(missing.authsy.ensureIdentity('/tmp/k'), { recipient: RECIPIENT, created: true });
+  assert.deepEqual(missing.credy.ensureIdentity('/tmp/k'), { recipient: RECIPIENT, created: true });
   const present = fixture();
-  assert.deepEqual(present.authsy.ensureIdentity('/tmp/k'), { recipient: RECIPIENT, created: false });
+  assert.deepEqual(present.credy.ensureIdentity('/tmp/k'), { recipient: RECIPIENT, created: false });
   assert.equal(present.calls.some((call) => (call.argv[2] ?? '').includes('age-keygen -o')), false);
 });
 
 test('the wrong identity gets an explanation, not an age error', () => {
   const f = fixture({ decryptError: 'age: error: no identity matched any of the recipients' });
-  assert.throws(() => f.authsy.unseal({ ciphertext: ARMOR('x') }), /identity does not open that file; copy the identity/);
+  assert.throws(() => f.credy.unseal({ ciphertext: ARMOR('x') }), /identity does not open that file; copy the identity/);
 });
 
 test('unsealing refuses input that is not an encrypted file', () => {
   const f = fixture();
   for (const bad of ['', 'just some text', null, '{"entries":{}}']) {
-    assert.throws(() => f.authsy.unseal({ ciphertext: bad }), /does not look like an age encrypted file/);
+    assert.throws(() => f.credy.unseal({ ciphertext: bad }), /does not look like an age encrypted file/);
   }
 });
 
