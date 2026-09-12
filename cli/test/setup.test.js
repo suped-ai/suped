@@ -65,7 +65,8 @@ test('unknown tools fail before changing the workspace', async () => {
 });
 
 test('guided setup can use defaults, skip extra categories, and defer account login', async () => {
-  const f = fixture({ answers: ['', '', '', '', '', '', '', 'n', 'n'] });
+  // One blank per category, including Workspace, then two declined logins.
+  const f = fixture({ answers: ['', '', '', '', '', '', '', '', 'n', 'n'] });
   assert.equal(await f.setupIfNeeded(), 0);
   assert.deepEqual(f.saved().tools, ['github', 'cloudflare']);
   assert.equal(f.saved().completed, true);
@@ -73,7 +74,7 @@ test('guided setup can use defaults, skip extra categories, and defer account lo
 });
 
 test('guided setup accepts provider alternatives and validates category choices', async () => {
-  const f = fixture({ answers: ['1', 'neon', 'glab', 'vercel', 'neon', 'none', 'stripe', 'none'] });
+  const f = fixture({ answers: ['1', 'neon', 'glab', 'vercel', 'neon', 'none', 'stripe', 'none', 'none'] });
   assert.equal(await f.setup({ authenticate: false }), 0);
   assert.deepEqual(f.saved().tools, ['gitlab', 'vercel', 'neon', 'stripe']);
   assert.ok(f.logs.some((message) => /Choose from repositories/.test(message)));
@@ -154,4 +155,28 @@ test('tool status distinguishes absent, installed, and connected without showing
   assert.ok(f.logs.some((line) => /Cloudflare.*connection not verified/.test(line)));
   assert.ok(f.logs.some((line) => /Supabase.*not installed/.test(line)));
   assert.equal(f.logs.some((line) => line.includes('test-user')), false);
+});
+
+test('an install-only tool is never offered an account to connect', async () => {
+  // Herdr has nothing to sign in to. Before the flag, setup asked anyway and
+  // then reported a failure for a login that could not exist.
+  const f = fixture({ answers: [] });
+  assert.equal(await f.setup({ tools: ['herdr'] }), 0);
+  assert.deepEqual(f.saved().tools, ['herdr']);
+  assert.equal(f.calls.some(([kind]) => kind === 'ask'), false, 'it must not ask about an account');
+  assert.ok(f.logs.some((m) => /Herdr: installed \(herdr\)/.test(m)));
+});
+
+test('suped login says why an install-only tool cannot be connected', async () => {
+  const f = fixture({ initialInstalled: ['herdr'] });
+  await assert.rejects(f.loginTools(['herdr']), /has no account to connect/);
+  assert.equal(f.calls.some(([kind]) => kind === 'run'), false);
+});
+
+test('tool status reports an install-only tool as installed, not unverified', async () => {
+  const f = fixture({ initialInstalled: ['herdr'] });
+  assert.equal(await f.showTools(['herdr']), 0);
+  const line = f.logs.find((m) => /^Herdr/.test(m));
+  assert.match(line, /installed$/);
+  assert.doesNotMatch(line, /connection not verified/);
 });

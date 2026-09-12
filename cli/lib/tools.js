@@ -3,6 +3,7 @@
 import { DEPLOY_TOOLS } from './catalog/deploy.js';
 import { SERVICE_TOOLS } from './catalog/services.js';
 import { AGENT_TOOLS } from './catalog/agents.js';
+import { plainBinaryInstall } from './catalog/installers.js';
 
 export const CATEGORIES = [
   { id: 'source', name: 'Repositories' },
@@ -11,6 +12,7 @@ export const CATEGORIES = [
   { id: 'cloud', name: 'Cloud infrastructure' },
   { id: 'payments', name: 'Payments' },
   { id: 'agents', name: 'Agent clients' },
+  { id: 'workspace', name: 'Workspace' },
 ];
 
 const PREFIX = '/home/suped/.local';
@@ -208,6 +210,27 @@ const CATALOGUE = [
   ...DEPLOY_TOOLS,
   ...SERVICE_TOOLS,
   ...AGENT_TOOLS,
+  {
+    id: 'herdr',
+    category: 'workspace', version: '0.9.0', docs: 'https://herdr.dev/docs/',
+    name: 'Herdr',
+    description: 'Terminal workspace manager for agents; run several side by side and reattach later.',
+    command: 'herdr',
+    // Nothing to sign in to. Without this, setup offers to connect a Herdr
+    // account and reports a failure when there isn't one.
+    account: false,
+    // The release is the executable, not an archive around one.
+    // Checksums from https://herdr.dev/latest.json, checked 12 September 2026.
+    install: plainBinaryInstall({
+      command: 'herdr',
+      version: '0.9.0',
+      downloadUrl: 'https://github.com/herdrdev/herdr/releases/download/v$version/herdr-linux-$arch',
+      checksums: {
+        amd64: '4fa1a01158dd8043da92d31b270780b0dcc10603038d9b61cac4d81ab63fb71f',
+        arm64: '9c8db20fb7e7427b138d5367113f1621ffd319f2f65d6f009e2594029115f0d2',
+      },
+    }),
+  },
 ];
 
 export const TOOLS = CATALOGUE.map((tool) => (
@@ -238,7 +261,8 @@ export function showCatalog(log = console.log) {
     log(`\n${category.name}`);
     for (const tool of TOOLS.filter((entry) => entry.category === category.id)) {
       log(`  ${tool.id.padEnd(12)} ${tool.name} (${tool.command}, ${tool.version}) — ${tool.description}`);
-      if (!tool.login || tool.manualConnect) log('               Manual account connection: suped login ' + tool.id);
+      if (tool.account === false) log('               No account to connect.');
+      else if (!tool.login || tool.manualConnect) log('               Manual account connection: suped login ' + tool.id);
     }
   }
   log('\nGuided setup: suped setup     Choose directly: suped setup gitlab vercel neon');
