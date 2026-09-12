@@ -169,7 +169,9 @@ export function createContainer({ image = IMAGE, name = CONTAINER, volume = VOLU
     '-w', WORKDIR,
     ...runArgs,
     image,
-    'sleep', 'infinity',
+    // Starts cron, then waits. A computer created before 0.3.0 keeps running
+    // `sleep infinity` until it is reset, and simply has no scheduler.
+    'suped-init',
   ];
   const r = docker(args);
   if (r.status !== 0) throw new Error(`could not create container: ${r.stderr}`);
