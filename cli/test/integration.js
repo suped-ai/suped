@@ -99,7 +99,7 @@ try {
     if (selectedTools.some((tool) => tool.id === 'go')) {
       // go finds its own GOROOT through the symlink, which is why the tree can
       // stay in the versioned directory it was unpacked into.
-      assert.match(cli(['exec', 'go', 'env', 'GOROOT']).trim(), /toolchains\/go-/);
+      assert.match(cli(['exec', 'go', 'env', 'GOROOT']).trim(), /\/share\/suped\/runtimes\/go-/);
       // A toolchain links every executable it declares, not just the first.
       cli(['exec', 'test', '-x', '/home/suped/.local/bin/gofmt']);
     }

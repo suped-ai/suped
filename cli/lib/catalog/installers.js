@@ -115,6 +115,13 @@ mv -fT -- "$stage/verified/${command}" "$prefix/bin/${command}"
  * `provides` names executables that `postInstall` is responsible for creating.
  * They are checked alongside the version, so an install whose postInstall step
  * failed is retried rather than mistaken for a complete one.
+ *
+ * The directory is "runtimes" and must not be renamed to "toolchains": that
+ * was uv's own name for its managed Python directory, and `uv python install`
+ * still migrates any directory of that name sitting beside its install dir --
+ * renaming it and leaving a symlink behind. A Go toolchain unpacked into a
+ * directory called "toolchains" ends up inside uv's Python directory, with
+ * GOROOT pointing there.
  */
 export function toolchainInstall({ id, command, version, repository, downloadUrl, checksums,
   archive, strip = 1, binDir = 'bin', bins = [command], provides = [], postInstall = '',
@@ -127,7 +134,7 @@ export function toolchainInstall({ id, command, version, repository, downloadUrl
   return `set -euo pipefail
 prefix=${shellQuote(PREFIX)}
 version=${shellQuote(version)}
-root="$prefix/share/suped/toolchains/${id}-$version"
+root="$prefix/share/suped/runtimes/${id}-$version"
 ${versionCheck(command, version, versionArgs, versionPattern)}
 link_bins() {
   local tmp="$1" name
@@ -142,8 +149,8 @@ case "$(uname -m)" in
   aarch64|arm64) arch=${shellQuote(architectures.arm64)}; checksum=${shellQuote(checksums.arm64)} ;;
   *) printf 'Unsupported CPU architecture: %s\\n' "$(uname -m)" >&2; exit 1 ;;
 esac
-mkdir -p "$prefix/bin" "$prefix/share/suped/toolchains"
-stage=$(mktemp -d "$prefix/share/suped/toolchains/.${id}.XXXXXX")
+mkdir -p "$prefix/bin" "$prefix/share/suped/runtimes"
+stage=$(mktemp -d "$prefix/share/suped/runtimes/.${id}.XXXXXX")
 trap 'rm -rf -- "$stage"' EXIT
 archive="${archive}"
 curl --fail --show-error --location --retry 3 --connect-timeout 15 --max-time 900 --output "$stage/archive" "${url}"

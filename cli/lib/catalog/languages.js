@@ -14,7 +14,12 @@ const BUN_VERSION = '1.4.2';
 // explicitly: uv reads XDG_BIN_HOME and XDG_DATA_HOME ahead of HOME, so on a
 // workspace where those are set Python would otherwise land outside the volume
 // that persists.
-const installPython = `export UV_PYTHON_INSTALL_DIR="$prefix/share/suped/python"
+//
+// The interpreter goes under its own "uv" directory rather than beside the
+// other runtimes. uv migrates a directory named "toolchains" that sits next to
+// its install directory, because that was uv's own former name for it, so
+// nothing else of ours should share that parent.
+const installPython = `export UV_PYTHON_INSTALL_DIR="$prefix/share/suped/uv/python"
 export UV_PYTHON_BIN_DIR="$prefix/bin"
 "$prefix/bin/uv" python install --preview-features python-install-default --default ${shellQuote(PYTHON_VERSION)}
 `;

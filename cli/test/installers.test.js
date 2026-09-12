@@ -209,7 +209,7 @@ test('optional native binary version alone cannot hide an outdated owning npm pa
 
 const toolchainId = 'suped-test-toolchain';
 const helper = `${command}-helper`;
-const toolchainRoot = `share/suped/toolchains/${toolchainId}-${version}`;
+const toolchainRoot = `share/suped/runtimes/${toolchainId}-${version}`;
 
 function toolchainRecipe(extra = {}) {
   return toolchainInstall({
@@ -226,7 +226,7 @@ function toolchainRecipe(extra = {}) {
 const toolchainExtract = [`$stage/root/bin/${command}`, `$stage/root/bin/${helper}`];
 
 function assertNoToolchainStaging(fixture) {
-  const toolchains = join(fixture.prefix, 'share/suped/toolchains');
+  const toolchains = join(fixture.prefix, 'share/suped/runtimes');
   const leftovers = existsSync(toolchains) ? readdirSync(toolchains).filter((name) => name.startsWith('.')) : [];
   assert.deepEqual(leftovers, [], 'toolchain staging directory is removed');
 }
