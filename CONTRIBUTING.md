@@ -83,15 +83,31 @@ npm run dev
 
 ## Releasing the CLI
 
-Maintainers only.
+Maintainers only. Publishing runs in GitHub Actions with npm trusted publishing,
+so there is no npm token anywhere: `.github/workflows/release.yml` proves who it
+is with an OIDC token, and only a tag can trigger it.
 
 ```sh
 cd cli
 # move Unreleased entries in CHANGELOG.md under the new version
 npm version patch|minor|major
-npm publish --access public
 git push --follow-tags
 ```
+
+Pushing the tag is the release. The workflow runs the tests, refuses anything
+that is not a `v*` tag, checks the tag matches the version in package.json, and
+publishes.
+
+One-time setup on npmjs.com, under the package's **Trusted Publisher** section
+(GitHub Actions). Every field is case-sensitive and npm does not verify them
+when you save, so a typo shows up as a failed publish:
+
+| Field | Value |
+|---|---|
+| Organization or user | `suped-ai` |
+| Repository | `suped` |
+| Workflow filename | `release.yml` |
+| Environment name | leave empty |
 
 The image tag follows the package version, so users on the new CLI build a
 fresh image on first run and are told to `suped reset` an older container.
