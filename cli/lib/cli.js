@@ -16,10 +16,14 @@ usage
   suped sync               show what defines this workspace, and what would not move
   suped sync save <file>   write the workspace to a portable file (no credentials)
   suped sync restore <file>   install that workspace's tools and clone its projects
-  suped secrets            show which account access can travel, and what cannot
+  suped secrets            show the account store, and what is waiting on you
   suped secrets key        create this workspace's encryption identity
-  suped secrets save <file>    seal the credentials that can travel
-  suped secrets restore <file> open a sealed file and sign those tools back in
+  suped secrets list       list stored entries
+  suped secrets show <id> [--reveal]   print one entry, secrets hidden by default
+  suped secrets set <id>   add or replace an entry (JSON on stdin)
+  suped secrets remove <id>
+  suped secrets save [file]    capture tool credentials, seal the store, write it out
+  suped secrets restore <file> merge a sealed file and sign those tools back in
   suped status             show image / volume / container state
   suped stop               stop the computer (home is kept)
   suped reset              recreate the container from the current image (home is kept, apt installs are not)
@@ -194,7 +198,7 @@ export async function main(argv) {
       return (await import('./sync.js')).mainSync(args, { runArgs });
 
     case 'secrets':
-      return (await import('./secrets.js')).mainSecrets(args, { runArgs });
+      return (await import('./secrets.js')).mainSecrets(args, { runArgs, flags });
 
     case 'status': {
       const s = computer.status();
