@@ -82,6 +82,27 @@ try {
     // Provider login flag availability is checked without starting authentication.
     if (selectedTools.some((tool) => tool.id === 'cloudflare')) assert.match(cli(['exec', 'wrangler', 'login', '--help']), /--device/);
     if (selectedTools.some((tool) => tool.id === 'supabase')) assert.match(cli(['exec', 'supabase', 'login', '--help']), /--no-browser/);
+    // Language toolchains: the two behaviours that are not just "a file exists".
+    if (selectedTools.some((tool) => tool.id === 'python')) {
+      // The selection has to win over Ubuntu's externally managed 3.12.
+      assert.match(cli(['exec', 'python3', '-c', 'import sys; print("%d.%d" % sys.version_info[:2])']).trim(), /^3\.14$/);
+      assert.match(cli(['exec', 'uv', '--version']), /^uv \d/);
+      assert.match(cli(['exec', 'uvx', '--version']), /\d+\.\d+\.\d+/);
+    }
+    if (selectedTools.some((tool) => tool.id === 'docker')) {
+      // The client's subcommands come from plugins, which are not on PATH.
+      assert.match(cli(['exec', 'docker', 'compose', 'version']), /Docker Compose version/);
+      assert.match(cli(['exec', 'docker', 'buildx', 'version']), /docker\/buildx/);
+      // Installing the client must not bring a daemon with it.
+      assert.equal(cli(['exec', 'sh', '-c', 'command -v dockerd || true']).trim(), '');
+    }
+    if (selectedTools.some((tool) => tool.id === 'go')) {
+      // go finds its own GOROOT through the symlink, which is why the tree can
+      // stay in the versioned directory it was unpacked into.
+      assert.match(cli(['exec', 'go', 'env', 'GOROOT']).trim(), /\/share\/suped\/runtimes\/go-/);
+      // A toolchain links every executable it declares, not just the first.
+      cli(['exec', 'test', '-x', '/home/suped/.local/bin/gofmt']);
+    }
   }
 
   const verifyMcp = checkMcp({ cli, selectedTools });

@@ -50,25 +50,27 @@ activated=true
  * replace what is on PATH.
  */
 export function plainBinaryInstall({ command, version, downloadUrl, checksums,
-  versionArgs = ['--version'], versionPattern, architectures = { amd64: 'x86_64', arm64: 'aarch64' } }) {
+  versionArgs = ['--version'], versionPattern, destination = '$prefix/bin',
+  architectures = { amd64: 'x86_64', arm64: 'aarch64' } }) {
   return `set -euo pipefail
 prefix=${shellQuote(PREFIX)}
 version=${shellQuote(version)}
+destination="${destination}"
 ${versionCheck(command, version, versionArgs, versionPattern)}
-if [ -x "$prefix/bin/${command}" ] && version_matches "$prefix/bin/${command}"; then exit 0; fi
+if [ -x "$destination/${command}" ] && version_matches "$destination/${command}"; then exit 0; fi
 case "$(uname -m)" in
   x86_64|amd64) arch=${shellQuote(architectures.amd64)}; checksum=${shellQuote(checksums.amd64)} ;;
   aarch64|arm64) arch=${shellQuote(architectures.arm64)}; checksum=${shellQuote(checksums.arm64)} ;;
   *) printf 'Unsupported CPU architecture: %s\\n' "$(uname -m)" >&2; exit 1 ;;
 esac
-mkdir -p "$prefix/bin"
+mkdir -p "$destination"
 stage=$(mktemp -d "$prefix/.suped-${command}.XXXXXX")
 trap 'rm -rf -- "$stage"' EXIT
 curl --fail --show-error --location --retry 3 --connect-timeout 15 --max-time 300 --output "$stage/${command}" "${downloadUrl}"
 printf '%s  %s\\n' "$checksum" "$stage/${command}" | sha256sum --check --status
 chmod 0755 "$stage/${command}"
 if ! version_matches "$stage/${command}"; then printf 'Unexpected ${command} version.\\n' >&2; exit 1; fi
-mv -fT -- "$stage/${command}" "$prefix/bin/${command}"
+mv -fT -- "$stage/${command}" "$destination/${command}"
 `;
 }
 
@@ -101,6 +103,66 @@ install -m 0755 "$stage/${member}" "$stage/verified/${command}"
 if ! version_matches "$stage/verified/${command}"; then printf 'Unexpected ${command} version.\\n' >&2; exit 1; fi
 mv -fT -- "$stage/verified/${command}" "$prefix/bin/${command}"
 `;
+}
+
+/**
+ * An archive holding a whole toolchain rather than a single executable. The
+ * tree is unpacked into a versioned directory inside the persistent home and
+ * verified there; only then is each executable linked onto PATH. `bins` is
+ * explicit, so adding a language cannot quietly put every script that happens
+ * to ship in its archive on PATH.
+ *
+ * `provides` names executables that `postInstall` is responsible for creating.
+ * They are checked alongside the version, so an install whose postInstall step
+ * failed is retried rather than mistaken for a complete one.
+ *
+ * The directory is "runtimes" and must not be renamed to "toolchains": that
+ * was uv's own name for its managed Python directory, and `uv python install`
+ * still migrates any directory of that name sitting beside its install dir --
+ * renaming it and leaving a symlink behind. A Go toolchain unpacked into a
+ * directory called "toolchains" ends up inside uv's Python directory, with
+ * GOROOT pointing there.
+ */
+export function toolchainInstall({ id, command, version, repository, downloadUrl, checksums,
+  archive, strip = 1, binDir = 'bin', bins = [command], provides = [], postInstall = '',
+  versionArgs = ['--version'], versionPattern,
+  architectures = { amd64: 'x86_64', arm64: 'aarch64' } }) {
+  const url = downloadUrl || `https://github.com/${repository}/releases/download/v$version/$archive`;
+  const inside = (dir) => (binDir === '.' ? dir : `${dir}/${binDir}`);
+  const ready = [`[ -x "$prefix/bin/${command}" ]`, `version_matches "$prefix/bin/${command}"`,
+    ...provides.map((name) => `[ -x "$prefix/bin/${name}" ]`)].join(' && ');
+  return `set -euo pipefail
+prefix=${shellQuote(PREFIX)}
+version=${shellQuote(version)}
+root="$prefix/share/suped/runtimes/${id}-$version"
+${versionCheck(command, version, versionArgs, versionPattern)}
+link_bins() {
+  local tmp="$1" name
+  for name in ${bins.map(shellQuote).join(' ')}; do
+    ln -s "${inside('$root')}/$name" "$tmp/$name.link"
+    mv -fT -- "$tmp/$name.link" "$prefix/bin/$name"
+  done
+}
+if ${ready}; then exit 0; fi
+case "$(uname -m)" in
+  x86_64|amd64) arch=${shellQuote(architectures.amd64)}; checksum=${shellQuote(checksums.amd64)} ;;
+  aarch64|arm64) arch=${shellQuote(architectures.arm64)}; checksum=${shellQuote(checksums.arm64)} ;;
+  *) printf 'Unsupported CPU architecture: %s\\n' "$(uname -m)" >&2; exit 1 ;;
+esac
+mkdir -p "$prefix/bin" "$prefix/share/suped/runtimes"
+stage=$(mktemp -d "$prefix/share/suped/runtimes/.${id}.XXXXXX")
+trap 'rm -rf -- "$stage"' EXIT
+archive="${archive}"
+curl --fail --show-error --location --retry 3 --connect-timeout 15 --max-time 900 --output "$stage/archive" "${url}"
+printf '%s  %s\\n' "$checksum" "$stage/archive" | sha256sum --check --status
+mkdir -p "$stage/root"
+tar --extract --gzip --file "$stage/archive" --directory "$stage/root" --no-same-owner --strip-components=${strip}
+rm -f -- "$stage/archive"
+if ! version_matches "${inside('$stage/root')}/${command}"; then printf 'Unexpected ${command} version.\\n' >&2; exit 1; fi
+rm -rf -- "$root"
+mv -fT -- "$stage/root" "$root"
+link_bins "$stage"
+${postInstall}`;
 }
 
 export function jsonOutput(result) {

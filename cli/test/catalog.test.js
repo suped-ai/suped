@@ -39,3 +39,18 @@ test('agent connection checks distinguish logged out responses from login status
     }
   }
 });
+
+test('no tool installs a daemon or reaches for the host Docker socket', () => {
+  // Mounting the host socket into the workspace gives anything in it root on
+  // the host. Suped installs the Docker client and nothing else; a daemon is
+  // something the operator points it at deliberately.
+  for (const tool of TOOLS) {
+    assert.doesNotMatch(tool.install, /docker\.sock/, `${tool.id} must not reference the host Docker socket`);
+    assert.doesNotMatch(tool.install, /\bdockerd\b/, `${tool.id} must not install a Docker daemon`);
+  }
+  const docker = getTools(['docker'])[0];
+  assert.equal(docker.account, false);
+  // The CLI goes on PATH; its subcommands are plugins, which do not.
+  assert.match(docker.install, /\$HOME\/\.docker\/cli-plugins/);
+  for (const plugin of ['docker-buildx', 'docker-compose']) assert.ok(docker.install.includes(plugin), plugin);
+});

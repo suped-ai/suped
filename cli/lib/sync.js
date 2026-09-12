@@ -288,6 +288,7 @@ export function createSync({
       }
       if (run(command(names)) !== 0) {
         log(`  some ${label} did not install; add them by hand`);
+        if (label === 'uv tools') log('  uv comes with the Python selection: "suped setup python"');
         failed = true;
       }
     }

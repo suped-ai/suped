@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, readlinkSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, relative, isAbsolute } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { binaryInstall, npmInstall, PREFIX, shellQuote } from '../lib/catalog/installers.js';
+import { binaryInstall, npmInstall, toolchainInstall, PREFIX, shellQuote } from '../lib/catalog/installers.js';
 
 const bash = process.platform === 'win32' && existsSync('C:/Program Files/Git/bin/bash.exe')
   ? 'C:/Program Files/Git/bin/bash.exe' : 'bash';
@@ -38,7 +38,8 @@ function binaryRecipe(format = 'tar.gz') {
   });
 }
 
-function execute(recipe, fixture, { fail = '', arch = 'x86_64', packageVersion = version, executableVersion = version, before = '', env = {} } = {}) {
+function execute(recipe, fixture, { fail = '', arch = 'x86_64', packageVersion = version, executableVersion = version,
+  before = '', env = {}, extract = [`$stage/${command}`] } = {}) {
   // Downloads are inert. Filesystem operations are real and confined to the
   // allocated prefix, so failed activation can be checked against the old file.
   const script = `
@@ -54,11 +55,11 @@ write_fake_executable() {
 }
 tar() {
   printf 'CALLED:tar\\n' >&2
-  ${fail === 'tar' ? 'return 23' : `write_fake_executable "$stage/${command}"`}
+  ${fail === 'tar' ? 'return 23' : extract.map((path) => `command mkdir -p "$(dirname "${path}")"; write_fake_executable "${path}"`).join('\n  ')}
 }
 unzip() {
   printf 'CALLED:unzip\\n' >&2
-  ${fail === 'unzip' ? 'return 23' : `write_fake_executable "$stage/${command}"`}
+  ${fail === 'unzip' ? 'return 23' : extract.map((path) => `command mkdir -p "$(dirname "${path}")"; write_fake_executable "${path}"`).join('\n  ')}
 }
 install() { printf 'CALLED:install\\n' >&2; ${fail === 'install' ? 'return 23' : 'command install "$@"'}; }
 mv() { printf 'CALLED:mv\\n' >&2; ${fail === 'mv' ? 'return 23' : 'command mv "$@"'}; }
@@ -204,4 +205,85 @@ test('optional native binary version alone cannot hide an outdated owning npm pa
     assert.equal(readFileSync(join(fixture.prefix, 'bin', command), 'utf8'), prior);
     assert.deepEqual(readdirSync(join(fixture.prefix, 'share/suped/tools')), ['previous']);
   }));
+});
+
+const toolchainId = 'suped-test-toolchain';
+const helper = `${command}-helper`;
+const toolchainRoot = `share/suped/runtimes/${toolchainId}-${version}`;
+
+function toolchainRecipe(extra = {}) {
+  return toolchainInstall({
+    id: toolchainId, command, version,
+    downloadUrl: 'https://example.invalid/$archive',
+    archive: 'test_${version}_${arch}.tar.gz',
+    checksums: { amd64: '1'.repeat(64), arm64: '2'.repeat(64) },
+    bins: [command, helper],
+    ...extra,
+  });
+}
+
+// The archive holds a bin directory, which is the shape toolchainInstall exists for.
+const toolchainExtract = [`$stage/root/bin/${command}`, `$stage/root/bin/${helper}`];
+
+function assertNoToolchainStaging(fixture) {
+  const toolchains = join(fixture.prefix, 'share/suped/runtimes');
+  const leftovers = existsSync(toolchains) ? readdirSync(toolchains).filter((name) => name.startsWith('.')) : [];
+  assert.deepEqual(leftovers, [], 'toolchain staging directory is removed');
+}
+
+test('a toolchain unpacks into a versioned directory and links only its declared executables', { skip: !bashAvailable }, () => {
+  withFixture((fixture) => {
+    const run = execute(toolchainRecipe(), fixture, { extract: toolchainExtract });
+    assert.equal(run.status, 0, run.stderr);
+    for (const name of [command, helper]) {
+      const link = join(fixture.prefix, 'bin', name);
+      assert.equal(readlinkSync(link), join(fixture.prefix, toolchainRoot, 'bin', name).replaceAll('\\', '/'));
+      assert.equal(spawnSync(bash, ['--noprofile', '--norc', '-c', `"${link}"`], { encoding: 'utf8' }).stdout.trim(), version);
+    }
+    assertNoToolchainStaging(fixture);
+  });
+});
+
+test('a toolchain whose archive reports the wrong version is never linked or moved into place', { skip: !bashAvailable }, () => {
+  withFixture((fixture) => {
+    const run = execute(toolchainRecipe(), fixture, { extract: toolchainExtract, executableVersion: '0.0.0' });
+    assert.equal(run.status, 1, run.stderr);
+    assert.match(run.stderr, /Unexpected .* version/);
+    assert.doesNotMatch(run.stderr, /CALLED:ln/);
+    assert.equal(existsSync(join(fixture.prefix, toolchainRoot)), false, 'nothing is moved into the versioned directory');
+    assertPreserved(fixture, run);
+    assertNoToolchainStaging(fixture);
+  });
+});
+
+test('a toolchain download or checksum failure leaves the previous executable and no staging behind', { skip: !bashAvailable }, () => {
+  for (const fail of ['curl', 'sha256sum']) withFixture((fixture) => {
+    const run = execute(toolchainRecipe(), fixture, { extract: toolchainExtract, fail });
+    assert.equal(run.status, 23, run.stderr);
+    assert.doesNotMatch(run.stderr, /CALLED:(tar|ln)/);
+    assertPreserved(fixture, run);
+    assertNoToolchainStaging(fixture);
+  });
+});
+
+test('a toolchain is only complete once postInstall has produced what it provides', { skip: !bashAvailable }, () => {
+  const recipe = toolchainRecipe({
+    provides: ['made-by-post'],
+    postInstall: 'printf \'#!/bin/bash\\ntrue\\n\' > "$prefix/bin/made-by-post"\nchmod +x "$prefix/bin/made-by-post"\n',
+  });
+  withFixture((fixture) => {
+    assert.equal(execute(recipe, fixture, { extract: toolchainExtract }).status, 0);
+    assert.ok(existsSync(join(fixture.prefix, 'bin', 'made-by-post')), 'postInstall runs after the executables are linked');
+
+    // Installed and complete: the fast path must not reach the network.
+    const again = execute(recipe, fixture, { extract: toolchainExtract, fail: 'curl' });
+    assert.equal(again.status, 0, again.stderr);
+    assert.doesNotMatch(again.stderr, /CALLED:curl/);
+
+    // A postInstall that did not finish last time has to be retried, not skipped.
+    rmSync(join(fixture.prefix, 'bin', 'made-by-post'));
+    const retry = execute(recipe, fixture, { extract: toolchainExtract, fail: 'curl' });
+    assert.equal(retry.status, 23, retry.stderr);
+    assert.match(retry.stderr, /CALLED:curl/);
+  });
 });
