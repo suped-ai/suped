@@ -5,6 +5,7 @@ version, so an image change is a package change.
 
 ## Unreleased
 
+- Carry software the workspace grew. `sync` now also records what was installed after setup — apt packages beyond the image's own, `uv` tools, and npm globals under the home prefix — by inspecting the workspace rather than asking anyone to record it, and `sync restore` reinstalls them. apt packages still do not survive `reset`, and `sync` now says so and points at `uv` or a home npm prefix for anything you keep.
 - Add `sync`, which moves a workspace between machines. `suped sync` shows what defines this workspace and names the work that would be left behind; `suped sync save <file>` writes that to a portable JSON file; `suped sync restore <file>` installs the file's tools and clones its projects on another machine. The file records the tool selection, published ports, extra mounts, and each project's remote and branch. It never contains saved logins, and the home volume is not copied, so tools are reinstalled for the architecture they land on.
 
 ## 0.2.0 · 2026-09-09

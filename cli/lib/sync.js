@@ -56,6 +56,47 @@ try { process.stdout.write(fs.readFileSync(path, 'utf8')); }
 catch (error) { if (error.code === 'ENOENT') process.stdout.write('null'); else throw error; }
 `;
 
+// Runs in the computer. Reports software added after the workspace was created,
+// by looking at what is installed rather than asking anyone to write it down.
+// The agent installs things the ordinary way; nothing here is a convention it
+// has to learn.
+const SCAN_INSTALLED = `
+const { execFileSync } = require('node:child_process');
+const fs = require('node:fs');
+const path = require('node:path');
+const home = require('node:os').homedir();
+const run = (file, args) => {
+  try { return execFileSync(file, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }); }
+  catch { return ''; }
+};
+
+// apt: everything explicitly installed now, minus what the image shipped with.
+// The baseline is written when the container is created, before anyone adds to it.
+const baselineFile = path.join(home, '.config/suped/base-packages');
+let apt = [];
+let aptKnown = false;
+if (fs.existsSync(baselineFile)) {
+  aptKnown = true;
+  const baseline = new Set(fs.readFileSync(baselineFile, 'utf8').split('\\n').map((line) => line.trim()).filter(Boolean));
+  apt = run('apt-mark', ['showmanual']).split('\\n').map((line) => line.trim())
+    .filter((name) => name && !baseline.has(name)).sort();
+}
+
+// uv tools and npm globals live in the home, so they already survive a reset.
+const uv = run('uv', ['tool', 'list']).split('\\n')
+  .map((line) => line.trim()).filter((line) => line && !line.startsWith('-'))
+  .map((line) => line.split(/\\s+/)[0]).filter(Boolean).sort();
+
+let npm = [];
+try {
+  const listed = JSON.parse(run('npm', ['ls', '-g', '--depth', '0', '--json', '--prefix', path.join(home, '.local')]) || '{}');
+  npm = Object.entries(listed.dependencies || {})
+    .map(([name, entry]) => (entry && entry.version ? name + '@' + entry.version : name)).sort();
+} catch {}
+
+process.stdout.write(JSON.stringify({ apt, aptKnown, uv, npm }));
+`;
+
 /** Split docker run args (['-p','a','-v','b']) into named lists. */
 export function splitRunArgs(runArgs = []) {
   const ports = [];
@@ -73,6 +114,16 @@ export function validateManifest(manifest) {
   if (manifest.version !== MANIFEST_VERSION) fail(`unsupported version ${manifest.version}; this Suped writes version ${MANIFEST_VERSION}`);
   for (const key of ['tools', 'ports', 'mounts']) {
     if (!Array.isArray(manifest[key]) || manifest[key].some((value) => typeof value !== 'string')) fail(`${key} must be a list of strings`);
+  }
+  // Absent on version-1 files written before workspaces recorded their growth.
+  const added = manifest.installed ?? {};
+  if (added === null || typeof added !== 'object' || Array.isArray(added)) fail('installed must be an object');
+  for (const key of ['apt', 'uv', 'npm']) {
+    const list = added[key] ?? [];
+    if (!Array.isArray(list) || list.some((value) => typeof value !== 'string')) fail(`installed.${key} must be a list of strings`);
+    // These are pasted into a shell, so refuse anything that is not a package name.
+    const bad = list.find((value) => !/^[A-Za-z0-9@._/+-]+$/.test(value));
+    if (bad !== undefined) fail(`installed.${key} has an unusable package name: ${bad}`);
   }
   if (!Array.isArray(manifest.projects)) fail('projects must be a list');
   for (const project of manifest.projects) {
@@ -113,9 +164,19 @@ export function createSync({
     catch { throw new Error('could not read the project list from the computer'); }
   }
 
+  function installed() {
+    const result = capture(['node', '-e', SCAN_INSTALLED]);
+    if (result.status !== 0) throw new Error('could not inspect installed software; check that the computer is running');
+    try {
+      const found = JSON.parse(result.stdout);
+      return { apt: found.apt ?? [], aptKnown: Boolean(found.aptKnown), uv: found.uv ?? [], npm: found.npm ?? [] };
+    } catch { throw new Error('could not read the installed software list from the computer'); }
+  }
+
   /** Everything that defines this workspace, and nothing that authenticates it. */
   function describe() {
     const found = projects();
+    const added = installed();
     const { ports, mounts } = splitRunArgs(containerRunArgs());
     return {
       manifest: {
@@ -124,10 +185,13 @@ export function createSync({
         tools: selectedTools(),
         ports,
         mounts,
+        // Software added after setup, so a workspace that grew keeps its growth.
+        installed: { apt: added.apt, uv: added.uv, npm: added.npm },
         projects: found.map(({ path, remote, branch }) => ({ path, remote, branch })),
       },
       // Kept out of the manifest: this describes the machine you are leaving.
       atRisk: found.filter((project) => project.dirty || project.unpushed || !project.remote),
+      aptKnown: added.aptKnown,
     };
   }
 
@@ -152,16 +216,25 @@ export function createSync({
 
   /** Show what would travel, and what would be left behind. */
   function status() {
-    const { manifest, atRisk } = describe();
+    const { manifest, atRisk, aptKnown } = describe();
+    const added = manifest.installed;
     log(`Workspace ${computer.CONTAINER} (suped ${manifest.suped})\n`);
     log(`tools      ${manifest.tools.length ? manifest.tools.join(', ') : '(base workspace only)'}`);
     log(`ports      ${manifest.ports.length ? manifest.ports.join(', ') : '(none)'}`);
     log(`mounts     ${manifest.mounts.length ? manifest.mounts.join(', ') : '(none)'}`);
+    if (added.uv.length) log(`uv tools   ${added.uv.join(', ')}`);
+    if (added.npm.length) log(`npm global ${added.npm.join(', ')}`);
+    if (added.apt.length) log(`apt        ${added.apt.join(', ')}`);
+    else if (!aptKnown) log('apt        (not tracked; this workspace predates package tracking)');
     log(`projects   ${manifest.projects.length}`);
     for (const project of manifest.projects) {
       log(`  ~/${project.path.padEnd(34)} ${project.remote ? `${project.remote}${project.branch ? ` (${project.branch})` : ''}` : 'no remote'}`);
     }
     const risk = reportAtRisk(atRisk);
+    if (added.apt.length) {
+      log('\nThose apt packages do not survive "suped reset". They are recorded here, so');
+      log('"suped sync restore" puts them back; prefer uv or a home npm prefix for anything you keep.');
+    }
     log('\nSaved logins are not included. Connect accounts on the new machine with "suped login <tool>".');
     log('Write this workspace to a file with "suped sync save <file>".');
     return risk;
@@ -195,6 +268,28 @@ export function createSync({
       if (await installTools(manifest.tools) !== 0) failed = true;
     } else {
       log('No tools to install; this was a base workspace.');
+    }
+
+    // Software the workspace grew after setup. Names are validated above, and
+    // each installer is given them as arguments rather than interpolated text.
+    const added = manifest.installed ?? {};
+    const replays = [
+      ['apt packages', added.apt ?? [], (names) => ['sudo', 'apt-get', 'install', '-y', '--no-install-recommends', ...names], true],
+      ['uv tools', added.uv ?? [], (names) => ['uv', 'tool', 'install', ...names], false],
+      ['npm globals', added.npm ?? [], (names) => ['npm', 'install', '-g', '--prefix', '/home/suped/.local', ...names], false],
+    ];
+    for (const [label, names, command, needsUpdate] of replays) {
+      if (!names.length) continue;
+      log(`Installing ${names.length} ${label}: ${names.join(', ')}`);
+      if (needsUpdate && run(['sudo', 'apt-get', 'update']) !== 0) {
+        log(`  could not refresh package lists; skipping ${label}`);
+        failed = true;
+        continue;
+      }
+      if (run(command(names)) !== 0) {
+        log(`  some ${label} did not install; add them by hand`);
+        failed = true;
+      }
     }
 
     const cloned = [];

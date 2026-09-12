@@ -82,7 +82,9 @@ try {
   const before = JSON.parse(docker(['container', 'inspect', container]).stdout)[0];
   cli(['reset']);
   const after = JSON.parse(docker(['container', 'inspect', container]).stdout)[0];
-  assert.deepEqual(after.HostConfig.Binds, before.HostConfig.Binds);
+  // Docker does not promise an order for Binds, and it has come back reversed
+  // between two inspects of the same computer. What matters is the same set.
+  assert.deepEqual([...after.HostConfig.Binds].sort(), [...before.HostConfig.Binds].sort());
   assert.deepEqual(after.HostConfig.PortBindings, before.HostConfig.PortBindings);
   assert.equal(cli(['exec', 'cat', '/home/suped/.config/suped/probe.txt']), 'saved\n');
   assert.equal(cli(['exec', 'cat', '/home/suped/test-mount/input.txt']), 'host mount survived\n');
