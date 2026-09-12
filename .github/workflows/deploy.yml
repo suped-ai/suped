@@ -29,16 +29,23 @@ jobs:
           cache-dependency-path: site/package-lock.json
       - run: npm ci
       - run: npm run build
+      # A fork without the secret should still build green. A push to main here
+      # must not: suped.ai silently stopped deploying on 2026-09-07 while every
+      # run reported success, and nothing said so.
       - name: check for Cloudflare token
         id: token
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          IS_CANONICAL_PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'suped-ai/suped' }}
         run: |
-          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+          if [ -n "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          elif [ "$IS_CANONICAL_PUSH" = "true" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN is not set, so suped.ai was built but NOT deployed and the live site is now stale. Add the secret, then re-run."
+            exit 1
+          else
             echo "::notice::CLOUDFLARE_API_TOKEN is not set; built but not deployed."
             echo "present=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=true" >> "$GITHUB_OUTPUT"
           fi
       - name: deploy to Cloudflare Pages
         if: steps.token.outputs.present == 'true'
