@@ -5,6 +5,9 @@ version, so an image change is a package change.
 
 ## Unreleased
 
+- Add **Herdr** to the catalogue, under a new Workspace category: a terminal workspace manager for running several agents side by side and reattaching later. `suped setup herdr`, or choose it during guided setup.
+- Tools can be install-only. Setup no longer offers to connect an account for something that has none, `suped tools` reports it as installed rather than "connection not verified", and `suped login` says why it cannot be connected instead of failing a login that could never exist.
+
 - `suped secrets env` prints shell exports for the credentials providers read from the environment. Most of the catalogue works that way — it is how each is documented to run in CI — so for those a stored token replaces signing in rather than supplementing it, and one token covers every machine: `eval "$(suped secrets env)"`. Thirteen tools carry their documented variable; an entry's own `env` map always wins, and can pull a value out of an account record (`{"RESEND_API_KEY": "keys.api"}`). Only the export lines go to stdout, so the output is safe to eval.
 
 ## 0.3.0 · 2026-09-12

@@ -43,6 +43,35 @@ activated=true
 `;
 }
 
+/**
+ * A release that is the executable itself, with no archive around it. Same
+ * guarantees as binaryInstall: the checksum is checked before anything runs,
+ * the download has to report the version we asked for, and only then does it
+ * replace what is on PATH.
+ */
+export function plainBinaryInstall({ command, version, downloadUrl, checksums,
+  versionArgs = ['--version'], versionPattern, architectures = { amd64: 'x86_64', arm64: 'aarch64' } }) {
+  return `set -euo pipefail
+prefix=${shellQuote(PREFIX)}
+version=${shellQuote(version)}
+${versionCheck(command, version, versionArgs, versionPattern)}
+if [ -x "$prefix/bin/${command}" ] && version_matches "$prefix/bin/${command}"; then exit 0; fi
+case "$(uname -m)" in
+  x86_64|amd64) arch=${shellQuote(architectures.amd64)}; checksum=${shellQuote(checksums.amd64)} ;;
+  aarch64|arm64) arch=${shellQuote(architectures.arm64)}; checksum=${shellQuote(checksums.arm64)} ;;
+  *) printf 'Unsupported CPU architecture: %s\\n' "$(uname -m)" >&2; exit 1 ;;
+esac
+mkdir -p "$prefix/bin"
+stage=$(mktemp -d "$prefix/.suped-${command}.XXXXXX")
+trap 'rm -rf -- "$stage"' EXIT
+curl --fail --show-error --location --retry 3 --connect-timeout 15 --max-time 300 --output "$stage/${command}" "${downloadUrl}"
+printf '%s  %s\\n' "$checksum" "$stage/${command}" | sha256sum --check --status
+chmod 0755 "$stage/${command}"
+if ! version_matches "$stage/${command}"; then printf 'Unexpected ${command} version.\\n' >&2; exit 1; fi
+mv -fT -- "$stage/${command}" "$prefix/bin/${command}"
+`;
+}
+
 export function binaryInstall({ command, version, repository, checksums, archive, member,
   versionArgs = ['--version'], versionPattern, downloadUrl, archiveFormat = 'tar.gz',
   architectures = { amd64: 'amd64', arm64: 'arm64' } }) {

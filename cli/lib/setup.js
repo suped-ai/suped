@@ -177,6 +177,9 @@ export function createSetup({
     saveConfig({ version: 1, tools: [...installedIds], completed: !failed });
     for (const tool of successful) {
       if (!shouldAuthenticate) continue;
+      // Not everything has an account. Asking about one is how a workspace
+      // manager or a language toolchain ends up looking like a failed login.
+      if (tool.account === false) continue;
       const answer = (await ask(`Connect your ${tool.name} account now? [Y/n]: `)).trim().toLowerCase();
       if (answer && answer !== 'y' && answer !== 'yes') continue;
       if (await authenticate(tool) !== 0) failed = true;
@@ -201,7 +204,10 @@ export function createSetup({
     const selected = ids.length ? getTools(ids) : TOOLS;
     log('Workspace tools\n');
     for (const tool of selected) {
-      const state = !installed(tool) ? 'not installed' : connected(tool) ? 'connected' : 'installed; connection not verified';
+      const state = !installed(tool) ? 'not installed'
+        : tool.account === false ? 'installed'
+        : connected(tool) ? 'connected'
+        : 'installed; connection not verified';
       log(`${tool.name.padEnd(15)} ${tool.command.padEnd(12)} ${state}`);
     }
     log('\nAdd tools: suped setup     Connect an account: suped login <tool>');
@@ -212,6 +218,11 @@ export function createSetup({
   async function loginTools(ids) {
     const selected = getTools(ids);
     if (!selected.length) throw new Error('choose a tool: suped login <tool>; run "suped catalog" for choices');
+    // Whether a tool has an account is a fact about the tool, so say that
+    // before complaining about the terminal.
+    for (const tool of selected) {
+      if (tool.account === false) throw new Error(`${tool.name} has no account to connect; it is installed by "suped setup ${tool.id}"`);
+    }
     if (!isInteractive()) throw new Error('login needs an interactive terminal; run "suped login <tool>" from a terminal');
     for (const tool of selected) {
       if (!installed(tool)) throw new Error(`${tool.name} is not installed; run "suped setup ${tool.id}" first`);

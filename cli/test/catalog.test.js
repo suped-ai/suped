@@ -8,8 +8,16 @@ test('catalogue has unique ids and resolvable CLI aliases, with complete setup m
     assert.ok(CATEGORIES.some((category) => category.id === tool.category), tool.id);
     assert.match(tool.version, /^\d+\.\d+\.\d+$/);
     assert.equal(typeof tool.install, 'string');
-    assert.equal(typeof tool.connected, 'function');
-    assert.ok(Array.isArray(tool.check) && tool.check.length > 0);
+    if (tool.account === false) {
+      // Install-only. Carrying login machinery it can never use is how a
+      // workspace manager ends up being offered an account to connect.
+      assert.equal(tool.login, undefined, `${tool.id} has no account, so it must not have a login`);
+      assert.equal(tool.connected, undefined, `${tool.id} has no account, so it must not have a connection check`);
+      assert.equal(tool.check, undefined, `${tool.id} has no account, so it must not have a check`);
+    } else {
+      assert.equal(typeof tool.connected, 'function');
+      assert.ok(Array.isArray(tool.check) && tool.check.length > 0);
+    }
     assert.deepEqual(getTools([tool.command]), [tool]);
   }
   assert.deepEqual(getTools(['glab,neon', 'vercel', 'pscale']).map((tool) => tool.id), ['gitlab', 'neon', 'vercel', 'planetscale']);
