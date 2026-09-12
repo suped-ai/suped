@@ -68,7 +68,7 @@ jobs:
             rg --version | head -1; w3m -version | head -1; age --version
             test -f /etc/suped/prompt.md
             sudo -n true
-            for absent in ffmpeg playwright cc uv go deno bun; do
+            for absent in ffmpeg playwright cc uv go deno bun docker; do
               if command -v "$absent" >/dev/null; then
                 echo "$absent must not be in the base image" >&2
                 exit 1

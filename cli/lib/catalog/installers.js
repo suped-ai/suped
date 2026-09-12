@@ -50,25 +50,27 @@ activated=true
  * replace what is on PATH.
  */
 export function plainBinaryInstall({ command, version, downloadUrl, checksums,
-  versionArgs = ['--version'], versionPattern, architectures = { amd64: 'x86_64', arm64: 'aarch64' } }) {
+  versionArgs = ['--version'], versionPattern, destination = '$prefix/bin',
+  architectures = { amd64: 'x86_64', arm64: 'aarch64' } }) {
   return `set -euo pipefail
 prefix=${shellQuote(PREFIX)}
 version=${shellQuote(version)}
+destination="${destination}"
 ${versionCheck(command, version, versionArgs, versionPattern)}
-if [ -x "$prefix/bin/${command}" ] && version_matches "$prefix/bin/${command}"; then exit 0; fi
+if [ -x "$destination/${command}" ] && version_matches "$destination/${command}"; then exit 0; fi
 case "$(uname -m)" in
   x86_64|amd64) arch=${shellQuote(architectures.amd64)}; checksum=${shellQuote(checksums.amd64)} ;;
   aarch64|arm64) arch=${shellQuote(architectures.arm64)}; checksum=${shellQuote(checksums.arm64)} ;;
   *) printf 'Unsupported CPU architecture: %s\\n' "$(uname -m)" >&2; exit 1 ;;
 esac
-mkdir -p "$prefix/bin"
+mkdir -p "$destination"
 stage=$(mktemp -d "$prefix/.suped-${command}.XXXXXX")
 trap 'rm -rf -- "$stage"' EXIT
 curl --fail --show-error --location --retry 3 --connect-timeout 15 --max-time 300 --output "$stage/${command}" "${downloadUrl}"
 printf '%s  %s\\n' "$checksum" "$stage/${command}" | sha256sum --check --status
 chmod 0755 "$stage/${command}"
 if ! version_matches "$stage/${command}"; then printf 'Unexpected ${command} version.\\n' >&2; exit 1; fi
-mv -fT -- "$stage/${command}" "$prefix/bin/${command}"
+mv -fT -- "$stage/${command}" "$destination/${command}"
 `;
 }
 

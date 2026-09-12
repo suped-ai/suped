@@ -39,6 +39,7 @@ and helps you connect them. You can connect an account later.
 | Payments | Stripe | Payment integration and webhook development |
 | Agents | Codex, Claude Code | Run your chosen agent beside the tools |
 | Languages | Python, Go, Deno, Bun | Run scripts, build, and test locally |
+| Containers | Docker | Build and run containers against a daemon you provide |
 | Workspace | Herdr | Run several agents side by side and reattach later |
 
 ```sh
@@ -77,9 +78,26 @@ suped exec claude mcp login notion --no-browser
 See [the tool catalogue](https://suped.dev/docs/tools) and
 [MCP setup](https://suped.dev/docs/mcp) for all choices and headless login steps.
 
+### Docker
+
+The `docker` selection installs the Docker **client** — the CLI plus the Compose
+and Buildx plugins. Suped does not run a daemon and never mounts your host's
+socket. Give the client a daemon yourself, and understand what you are choosing:
+
+```sh
+# A remote or rootless daemon. Nothing of the host is exposed.
+suped exec env DOCKER_HOST=ssh://you@builder docker ps
+
+# The host's daemon. This grants anything in the workspace root on the host,
+# because a container can be started with the host filesystem mounted.
+suped -v /var/run/docker.sock:/var/run/docker.sock
+```
+
+The second form is a real privilege grant, not a convenience. Prefer the first
+unless you have decided otherwise for a workspace you fully trust.
+
 Supabase's hosted commands are available here. Its local database stack needs
-a Docker daemon inside or reachable from the workspace; Suped does not mount
-your host's Docker socket or set up that local stack.
+a Docker daemon reachable from the workspace by one of the routes above.
 
 ## Upgrade an existing workspace
 

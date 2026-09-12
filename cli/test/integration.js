@@ -89,6 +89,13 @@ try {
       assert.match(cli(['exec', 'uv', '--version']), /^uv \d/);
       assert.match(cli(['exec', 'uvx', '--version']), /\d+\.\d+\.\d+/);
     }
+    if (selectedTools.some((tool) => tool.id === 'docker')) {
+      // The client's subcommands come from plugins, which are not on PATH.
+      assert.match(cli(['exec', 'docker', 'compose', 'version']), /Docker Compose version/);
+      assert.match(cli(['exec', 'docker', 'buildx', 'version']), /docker\/buildx/);
+      // Installing the client must not bring a daemon with it.
+      assert.equal(cli(['exec', 'sh', '-c', 'command -v dockerd || true']).trim(), '');
+    }
     if (selectedTools.some((tool) => tool.id === 'go')) {
       // go finds its own GOROOT through the symlink, which is why the tree can
       // stay in the versioned directory it was unpacked into.
