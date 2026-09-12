@@ -70,7 +70,13 @@ try {
       if (tool.id === 'neon') cli(['exec', 'neon', 'profile', 'create', '--help'], { timeout: 30_000 });
       if (tool.id === 'turso') cli(['exec', 'turso', 'auth', 'login', '--help'], { timeout: 30_000 });
       const state = cli(['tools', tool.id], { timeout: 30_000 });
-      assert.match(state, /installed; connection not verified/, `${tool.id} must not claim an account connection in a fresh workspace`);
+      if (tool.account === false) {
+        // Nothing to connect, so it must not imply a connection is pending.
+        assert.match(state, /installed\s*$/m, `${tool.id} is install-only and should report just "installed"`);
+        assert.doesNotMatch(state, /connection not verified/, `${tool.id} has no account to verify`);
+      } else {
+        assert.match(state, /installed; connection not verified/, `${tool.id} must not claim an account connection in a fresh workspace`);
+      }
       console.log(`PASS ${tool.name} installation, repeat setup, login flags, and signed-out status`);
     }
     // Provider login flag availability is checked without starting authentication.
