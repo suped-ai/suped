@@ -21,6 +21,8 @@ usage
   suped move restore <dir>    rebuild that workspace here, and sign its tools back in
   suped secrets            show the account store, and what is waiting on you
   suped secrets key        create this workspace's encryption identity
+  suped secrets key --show     print the identity, to move it to another machine
+  suped secrets key --import [--replace]   install one from stdin
   suped secrets list       list stored entries
   suped secrets show <id> [--reveal]   print one entry, secrets hidden by default
   suped secrets set <id>   add or replace an entry (JSON on stdin)

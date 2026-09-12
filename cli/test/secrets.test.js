@@ -293,3 +293,55 @@ test('env says so when there is nothing to set', () => {
   assert.equal(f.env(), 1);
   assert.equal(f.stdout(), '');
 });
+
+// --- moving the identity between machines ------------------------------------
+
+function keyFixture(credy, { stdin = '' } = {}) {
+  const logs = [];
+  const notes = [];
+  let stdout = '';
+  const secrets = createSecrets({
+    capture: () => ({ status: 0, stdout: '', stderr: '' }),
+    log: (message) => logs.push(message),
+    note: (message) => notes.push(message),
+    write: (text) => { stdout += text; },
+    readStdin: () => stdin,
+    credy,
+  });
+  return { secrets, logs, notes, out: () => stdout, output: () => logs.join('\n') };
+}
+
+test('--show puts the identity on stdout alone, so it can be piped to the other machine', () => {
+  // Same discipline as "secrets env": anything that is not the payload goes to
+  // stderr, or the one-step handoff silently produces a corrupt key file.
+  const identity = 'AGE-SECRET-KEY-1EXAMPLE\n';
+  const f = keyFixture({ exportIdentity: () => ({ identity, recipient: RECIPIENT }) });
+  assert.equal(f.secrets.key({ show: true }), 0);
+  assert.equal(f.out(), identity);
+  assert.deepEqual(f.logs, [], 'nothing explanatory may reach stdout');
+  assert.match(f.notes.join('\n'), /opens every secret sealed to it/);
+});
+
+test('--show always ends the identity with a newline', () => {
+  const f = keyFixture({ exportIdentity: () => ({ identity: 'AGE-SECRET-KEY-1EXAMPLE', recipient: RECIPIENT }) });
+  f.secrets.key({ show: true });
+  assert.equal(f.out(), 'AGE-SECRET-KEY-1EXAMPLE\n');
+});
+
+test('--import reads the identity from stdin and reports what happened to it', () => {
+  for (const replaced of [false, true]) {
+    const seen = [];
+    const f = keyFixture({ importIdentity: (options) => { seen.push(options); return { recipient: RECIPIENT, replaced }; } },
+      { stdin: 'AGE-SECRET-KEY-1EXAMPLE\n' });
+    assert.equal(f.secrets.key({ install: true, replace: replaced }), 0);
+    assert.equal(seen[0].identity, 'AGE-SECRET-KEY-1EXAMPLE\n');
+    assert.equal(seen[0].replace, replaced);
+    assert.match(f.output(), replaced ? /^replaced the identity/ : /^installed the identity/);
+    assert.equal(f.out(), '', 'nothing is written to stdout when importing');
+  }
+});
+
+test('showing and importing at once is refused rather than guessed at', () => {
+  const f = keyFixture({});
+  assert.throws(() => f.secrets.key({ show: true, install: true }), /choose one of --show or --import/);
+});

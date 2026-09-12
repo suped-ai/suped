@@ -214,3 +214,93 @@ test('an env map is checked so nothing unusable reaches a shell', () => {
   assert.throws(bad({ GOOD: '../escape' }), /must be a field path/);
   assert.throws(bad({ GOOD: 42 }), /must be a field path/);
 });
+
+// --- moving the identity itself ---------------------------------------------
+// The identity is the one secret the design deliberately does not carry for
+// you, so the handoff has to be a single step and must never leave a machine
+// holding a key that does not work.
+
+const SECRET_KEY = 'AGE-SECRET-KEY-1EXAMPLEEXAMPLEEXAMPLEEXAMPLEEXAMPLEEXAMPLEEXAMPLEEXAMP\n';
+
+function identityFixture({ existing = null, stagedValid = true, moveFails = false } = {}) {
+  const files = new Map();
+  if (existing) files.set(DEFAULT_IDENTITY, existing);
+  const capture = (argv, options = {}) => {
+    if (argv[0] === 'age' && argv[1] === '--version') return { status: 0, stdout: '1.1.1\n', stderr: '' };
+    const script = argv[2] ?? '';
+    const keygen = script.match(/age-keygen -y "([^"]+)"/);
+    if (keygen) {
+      const held = files.get(keygen[1]);
+      const usable = held !== undefined && (!keygen[1].endsWith('.incoming') || stagedValid);
+      return usable ? { status: 0, stdout: `${RECIPIENT}\n`, stderr: '' } : { status: 1, stdout: '', stderr: '' };
+    }
+    const read = script.match(/^cat "([^"]+)"$/);
+    if (read) {
+      const held = files.get(read[1]);
+      return held === undefined ? { status: 1, stdout: '', stderr: '' } : { status: 0, stdout: held, stderr: '' };
+    }
+    const staged = script.match(/cat > "([^"]+)"$/);
+    if (staged) { files.set(staged[1], options.input); return { status: 0, stdout: '', stderr: '' }; }
+    const removed = script.match(/^rm -f "([^"]+)"$/);
+    if (removed) { files.delete(removed[1]); return { status: 0, stdout: '', stderr: '' }; }
+    const moved = script.match(/^mv -f "([^"]+)" "([^"]+)"$/);
+    if (moved) {
+      if (moveFails) return { status: 1, stdout: '', stderr: 'read-only' };
+      files.set(moved[2], files.get(moved[1]));
+      files.delete(moved[1]);
+      return { status: 0, stdout: '', stderr: '' };
+    }
+    throw new assert.AssertionError({ message: `unexpected command ${JSON.stringify(argv)}` });
+  };
+  return { credy: createCredy({ capture }), files };
+}
+
+test('an identity can be read out whole, with the recipient it belongs to', () => {
+  const { credy } = identityFixture({ existing: SECRET_KEY });
+  assert.deepEqual(credy.exportIdentity(), { identity: SECRET_KEY, recipient: RECIPIENT });
+});
+
+test('there is nothing to export when no identity has been made', () => {
+  const { credy } = identityFixture();
+  assert.throws(() => credy.exportIdentity(), /no identity at/);
+});
+
+test('importing refuses anything that is not an age identity, before touching the disk', () => {
+  const { credy, files } = identityFixture();
+  for (const junk of ['', 'hello', RECIPIENT, null, undefined]) {
+    assert.throws(() => credy.importIdentity({ identity: junk }), /does not look like an age identity/);
+  }
+  assert.equal(files.size, 0, 'nothing is written while validating the input');
+});
+
+test('importing will not silently replace an identity that is already here', () => {
+  const { credy, files } = identityFixture({ existing: SECRET_KEY });
+  assert.throws(() => credy.importIdentity({ identity: SECRET_KEY }), /already here/);
+  assert.throws(() => credy.importIdentity({ identity: SECRET_KEY }), /unopenable/);
+  assert.equal(files.get(DEFAULT_IDENTITY), SECRET_KEY, 'the existing identity is untouched');
+  const result = credy.importIdentity({ identity: SECRET_KEY, replace: true });
+  assert.equal(result.replaced, true);
+  assert.equal(result.recipient, RECIPIENT);
+});
+
+test('an unusable key never replaces a working one, and leaves nothing staged', () => {
+  // Verified on a staged copy first, the same way an installed executable is:
+  // a key that has replaced a working one loses every secret sealed to it.
+  const { credy, files } = identityFixture({ existing: SECRET_KEY, stagedValid: false });
+  assert.throws(() => credy.importIdentity({ identity: SECRET_KEY, replace: true }), /not usable, so nothing was changed/);
+  assert.equal(files.get(DEFAULT_IDENTITY), SECRET_KEY);
+  assert.deepEqual([...files.keys()], [DEFAULT_IDENTITY], 'the staged copy is cleaned up');
+});
+
+test('a failed install is reported rather than leaving a half-written identity', () => {
+  const { credy, files } = identityFixture({ moveFails: true });
+  assert.throws(() => credy.importIdentity({ identity: SECRET_KEY }), /could not install the identity/);
+  assert.deepEqual([...files.keys()], [], 'nothing is left behind');
+});
+
+test('importing onto a machine with no identity installs it', () => {
+  const { credy, files } = identityFixture();
+  const result = credy.importIdentity({ identity: SECRET_KEY });
+  assert.deepEqual(result, { recipient: RECIPIENT, replaced: false });
+  assert.equal(files.get(DEFAULT_IDENTITY), SECRET_KEY);
+});
