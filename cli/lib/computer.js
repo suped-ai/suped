@@ -187,6 +187,21 @@ export function recordBasePackages() {
     '[ -f ~/.config/suped/base-packages ] || { mkdir -p ~/.config/suped && apt-mark showmanual | sort > ~/.config/suped/base-packages; }']);
 }
 
+/**
+ * A user's crontab lives in /var/spool/cron, which is the container and not the
+ * home volume, so recreating the computer would quietly drop every scheduled
+ * job. Carry it across the same way ports and mounts are carried.
+ */
+export function readCrontab() {
+  const result = capture(['bash', '-lc', 'crontab -l 2>/dev/null']);
+  return result.status === 0 ? result.stdout : '';
+}
+
+export function writeCrontab(text) {
+  if (!text.trim()) return;
+  capture(['bash', '-lc', 'crontab -'], { input: text });
+}
+
 export function startContainer(name = CONTAINER) {
   const r = docker(['start', name]);
   if (r.status !== 0) throw new Error(`could not start container: ${r.stderr}`);
@@ -265,8 +280,11 @@ export function resetComputer({ runArgs = [], features = null, rebuild = false, 
     buildImage(image, { noCache, features: selected });
   }
   if (!volumeExists()) createVolume();
+  // Read the schedule out before the container holding it is gone.
+  const crontab = state === null ? '' : readCrontab();
   if (state !== null) removeContainer();
   createContainer({ image, runArgs: retainedArgs, features: selected });
+  writeCrontab(crontab);
   recordBasePackages();
   return { image, features: selected };
 }
