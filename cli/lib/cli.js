@@ -13,6 +13,9 @@ usage
   suped mcp list          browse curated app connections (no Docker needed)
   suped mcp add <ids...> --client codex|claude   configure a client's MCP servers
   suped mcp export <ids...> --client codex|claude|cursor   print client config
+  suped sync               show what defines this workspace, and what would not move
+  suped sync save <file>   write the workspace to a portable file (no credentials)
+  suped sync restore <file>   install that workspace's tools and clone its projects
   suped status             show image / volume / container state
   suped stop               stop the computer (home is kept)
   suped reset              recreate the container from the current image (home is kept, apt installs are not)
@@ -154,6 +157,9 @@ export async function main(argv) {
 
     case 'mcp':
       return (await import('./mcp.js')).mainMcp(args, { runArgs });
+
+    case 'sync':
+      return (await import('./sync.js')).mainSync(args, { runArgs });
 
     case 'status': {
       const s = computer.status();
