@@ -100,6 +100,11 @@ WORKDIR /home/suped
 # Tools selected during setup install in the persistent home. Keep them on
 # PATH for shells, direct Docker exec, and agent processes alike.
 ENV PATH="/home/suped/.local/bin:${PATH}"
+# `npm i -g` goes here too. The default prefix is /usr, so the obvious way to
+# install pnpm or any npm tool fails with EACCES, and a sudo install would not
+# survive reset. An environment variable rather than ~/.npmrc, because the home
+# skeleton only reaches a volume on its first mount.
+ENV NPM_CONFIG_PREFIX="/home/suped/.local"
 
 # Home skeleton. Docker copies this into the named volume on first mount,
 # so it persists and grows with whatever you do afterwards.

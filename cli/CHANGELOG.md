@@ -5,6 +5,12 @@ version, so an image change is a package change.
 
 ## Unreleased
 
+Found by running a real project inside a workspace as the agent would.
+
+- Add **Node.js** to the Languages catalogue (26.8.2). The image keeps Node 22, because setup installs agent clients and provider CLIs with npm and that has to exist before any selection runs — but a project could not choose a newer one, and one that runs `.ts` files directly needs native type stripping. `suped setup node` puts a current Node ahead of the image's on PATH.
+- `npm i -g` works, and lands in the home. npm's global prefix was `/usr`, so the obvious way to install pnpm or any npm tool failed with EACCES, and a `sudo` install would not have survived `reset`. The image now sets `NPM_CONFIG_PREFIX` to `~/.local`.
+- Say which Docker problem it is. "Docker is not available; install Docker" covered three situations, and the one people hit — Docker installed and running, but this user not allowed to use its socket because the `docker` group was granted after login — told them to install Docker. The message now names the actual problem and the fix for each.
+
 ## 0.6.0 · 2026-09-13
 
 Several machines, one workspace. 0.4.0 could install and sign in; this release
