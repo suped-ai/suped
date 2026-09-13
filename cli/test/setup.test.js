@@ -182,3 +182,17 @@ test('tool status reports an install-only tool as installed, not unverified', as
   assert.match(line, /installed$/);
   assert.doesNotMatch(line, /connection not verified/);
 });
+
+test('login for a tool that is already connected needs no terminal, and re-runs its follow-up', async () => {
+  // An agent re-running the follow-up from a script is exactly the case; the
+  // terminal check used to come before the connection check and refuse it.
+  const f = fixture({ interactive: false, initialInstalled: ['github'], initialConnected: ['github'] });
+  assert.equal(await f.loginTools(['github']), 0);
+  const gh = TOOLS.find((tool) => tool.id === 'github');
+  assert.ok(f.calls.some(([kind, command]) => kind === 'run' && JSON.stringify(command) === JSON.stringify(gh.afterLogin)), 'the follow-up ran');
+});
+
+test('login for a tool that is not connected still needs a terminal', async () => {
+  const f = fixture({ interactive: false, initialInstalled: ['github'] });
+  await assert.rejects(f.loginTools(['github']), /needs an interactive terminal/);
+});
