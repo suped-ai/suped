@@ -137,11 +137,14 @@ test('login failure returns a failure and can be retried', async () => {
   assert.ok(f.logs.some((message) => message.includes('suped login github')));
 });
 
-test('noninteractive launches skip setup and login rejects before accessing tools', async () => {
+test('noninteractive launches skip setup, and login names the real problem first', async () => {
   const f = fixture({ interactive: false });
   assert.equal(await f.setupIfNeeded(), 0);
-  await assert.rejects(f.loginTools(['github']), /interactive terminal/);
-  assert.equal(f.calls.length, 0);
+  assert.equal(f.calls.length, 0, 'a launch that skips setup touches nothing');
+  // "needs a terminal" used to come first, which was misleading when the tool
+  // was not even installed. Now the missing install is what is reported.
+  await assert.rejects(f.loginTools(['github']), /not installed; run "suped setup github"/);
+  assert.equal(f.calls.some(([kind]) => kind === 'run'), false, 'no login is ever started');
 });
 
 test('missing CLI prompts installation without attempting login', async () => {
