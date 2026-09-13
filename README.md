@@ -350,6 +350,23 @@ suped -p 3000:3000 -v ~/data:/home/suped/data
 suped reset -p 8080:8080
 ```
 
+Commands run in `~/workspace` unless you say otherwise. `-C` names a directory
+inside the home, and a `.suped` file in a project directory (or any parent)
+names the workspace it belongs to, so nothing has to be repeated per command:
+
+```sh
+suped -C projects/app exec pnpm test        # run there, this once
+cat > .suped <<'EOF'                          # in the project on your host
+container = suped-app
+volume    = suped-app-home
+dir       = projects/app
+EOF
+suped exec pnpm test                        # same box, same directory, every time
+```
+
+The environment always wins over the file, so a cloned repository can only
+fill in what you have not set yourself. `suped status` shows which file it read.
+
 Reset/rebuild retain the existing ports and mounts. Supplying `-p` replaces
 the port list; `-v` replaces the extra-mount list. For `exec`, put Suped's
 options before the command: `suped -p 3000:3000 exec node --version`.

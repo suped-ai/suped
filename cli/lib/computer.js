@@ -337,20 +337,39 @@ export function resetComputer({ runArgs = [], features = null, rebuild = false, 
   return { image, features: selected };
 }
 
-function execArgs({ interactive = false, stdin = true } = {}) {
+/**
+ * Where a command runs, as the container sees it. Relative paths are inside
+ * the home -- `projects/tuiaes` -- because that is how every document names
+ * them; `~` works too. Nothing else does, so a path cannot leave the home.
+ */
+export function resolveHomePath(dir) {
+  if (dir === undefined || dir === null || dir === '') return WORKDIR;
+  const text = String(dir).trim();
+  if (text.includes('\0')) throw new Error('directory cannot contain a NUL byte');
+  const inside = text === '~' ? '' : text.startsWith('~/') ? text.slice(2) : text.startsWith('/') ? null : text;
+  if (inside === null) {
+    if (text !== HOME && !text.startsWith(`${HOME}/`)) throw new Error(`directory must be inside ${HOME}: ${text}`);
+    return text.replace(/\/+$/, '') || HOME;
+  }
+  const parts = inside.split('/').filter((part) => part && part !== '.');
+  if (parts.includes('..')) throw new Error(`directory must stay inside the home: ${text}`);
+  return parts.length ? `${HOME}/${parts.join('/')}` : HOME;
+}
+
+function execArgs({ interactive = false, stdin = true, cwd } = {}) {
   const args = ['exec'];
   if (interactive) args.push('-it');
   else if (stdin) args.push('-i');
-  args.push('-u', USER, '-w', WORKDIR);
+  args.push('-u', USER, '-w', resolveHomePath(cwd));
   if (process.env.TERM) args.push('-e', `TERM=${process.env.TERM}`);
   args.push(CONTAINER);
   return args;
 }
 
 /** Attach an interactive login shell. Returns the shell's exit status. */
-export function shell() {
+export function shell({ cwd } = {}) {
   const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
-  return docker([...execArgs({ interactive }), 'bash', '-l'], { inherit: true, tty: interactive }).status;
+  return docker([...execArgs({ interactive, cwd }), 'bash', '-l'], { inherit: true, tty: interactive }).status;
 }
 
 function commandArgs(command) {
@@ -363,9 +382,9 @@ function commandArgs(command) {
 }
 
 /** Run a shell string or exact argv inside the computer. Returns exit status. */
-export function exec(command) {
+export function exec(command, { cwd } = {}) {
   const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
-  return docker([...execArgs({ interactive }), ...commandArgs(command)], { inherit: true, tty: interactive }).status;
+  return docker([...execArgs({ interactive, cwd }), ...commandArgs(command)], { inherit: true, tty: interactive }).status;
 }
 
 /** Capture raw output without a TTY; input is delivered through stdin, never shell text. */

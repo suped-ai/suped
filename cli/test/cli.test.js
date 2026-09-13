@@ -97,3 +97,12 @@ test('system prompt is the short one', () => {
 test('version matches package.json', () => {
   assert.match(VERSION, /^\d+\.\d+\.\d+/);
 });
+
+test('-C names where exec runs, and comes before the command like every other option', async () => {
+  const { parseArgs } = await import('../lib/cli.js');
+  assert.equal(parseArgs(['-C', 'projects/app', 'exec', 'pnpm', 'test']).dir, 'projects/app');
+  assert.equal(parseArgs(['--dir=projects/app', 'shell']).dir, 'projects/app');
+  assert.deepEqual(parseArgs(['-C', 'projects/app', 'exec', 'pnpm', 'test']).args, ['pnpm', 'test']);
+  assert.equal(parseArgs(['exec', 'ls']).dir, null);
+  assert.throws(() => parseArgs(['-C']), /missing value for -C/);
+});

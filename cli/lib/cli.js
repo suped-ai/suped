@@ -43,6 +43,7 @@ usage
 options (used when the container is first created)
   -p, --publish <host:container>   publish a port (repeatable)
   -v, --volume  <host:container>   mount an extra host path (repeatable)
+  -C, --dir <dir>                  start exec/shell in this directory inside the home (default: workspace)
   --with <features>               bake optional software into the image (comma separated)
   --without                       bake none of it in
   --skip-auth                     install selected tools without signing in (setup)
@@ -63,6 +64,13 @@ environment
   SUPED_CONTAINER  container name   (default: ${computer.CONTAINER})
   SUPED_VOLUME     home volume name (default: ${computer.VOLUME})
   SUPED_IMAGE      image tag        (default: ${computer.IMAGE})
+  SUPED_DIR        default directory for exec and shell
+
+a .suped file in the current directory or any parent sets these for a project:
+  container = suped-tuiaes
+  volume    = suped-tuiaes-home
+  dir       = projects/tuiaes
+The environment always wins over the file.
 
 the computer is a Linux container with a persistent /home/suped.
 files and credentials in your home survive reset/rebuild; system package installs do not.
@@ -76,6 +84,7 @@ export function parseArgs(argv) {
   const flags = new Set();
   const rest = [];
   let features = null;
+  let dir = null;
   const addFeatures = (value) => {
     features = (features ?? []).concat(value.split(/[\s,]+/).filter(Boolean));
   };
@@ -99,6 +108,15 @@ export function parseArgs(argv) {
       // An explicit empty selection, so "rebuild --without" strips extras.
       features = features ?? [];
     }
+    else if (a === '-C' || a === '--dir') {
+      const value = argv[++i];
+      if (!value || value.startsWith('-')) throw new Error('missing value for -C/--dir (e.g. -C projects/app)');
+      dir = value;
+    }
+    else if (a.startsWith('--dir=')) {
+      dir = a.slice('--dir='.length);
+      if (!dir) throw new Error('missing value for -C/--dir (e.g. -C projects/app)');
+    }
     else if (a === '-p' || a === '--publish' || a === '-v' || a === '--volume') {
       const value = argv[++i];
       if (!value || value.startsWith('-')) throw new Error('missing value for -p/--publish or -v/--volume');
@@ -121,7 +139,7 @@ export function parseArgs(argv) {
   }
   if (runArgs.includes(undefined)) throw new Error('missing value for -p/--publish or -v/--volume');
   const [command = 'shell', ...args] = rest;
-  return { command, args, runArgs, flags, features };
+  return { command, args, runArgs, flags, features, dir };
 }
 
 function warnIfStale(stale) {
@@ -135,7 +153,9 @@ async function firstRunSetup() {
 }
 
 export async function main(argv) {
-  const { command, args, runArgs, flags, features } = parseArgs(argv);
+  const { command, args, runArgs, flags, features, dir: dirOption } = parseArgs(argv);
+  // -C on the command line, else the .suped file's dir, else ~/workspace.
+  const dir = dirOption ?? process.env.SUPED_DIR ?? null;
 
   if (flags.has('help') || flags.has('h') || command === 'help') {
     process.stdout.write(HELP);
@@ -152,7 +172,7 @@ export async function main(argv) {
       warnIfStale(stale);
       const setupStatus = await firstRunSetup();
       if (setupStatus) return setupStatus;
-      return computer.shell();
+      return computer.shell({ cwd: dir });
     }
 
     case 'up': {
@@ -168,7 +188,7 @@ export async function main(argv) {
       if (args.length === 0) throw new Error('exec: nothing to run. usage: suped exec <command...>');
       const { stale } = computer.ensureUp({ runArgs, features: features ?? [], log });
       warnIfStale(stale);
-      return computer.exec(args.length === 1 ? args[0] : args);
+      return computer.exec(args.length === 1 ? args[0] : args, { cwd: dir });
     }
 
     case 'setup': {
@@ -218,6 +238,7 @@ export async function main(argv) {
     case 'status': {
       const s = computer.status();
       const rows = [
+        ...(process.env.SUPED_WORKSPACE_FILE ? [['workspace file', process.env.SUPED_WORKSPACE_FILE]] : []),
         ['docker', s.docker ? 'available' : 'NOT AVAILABLE'],
         ['image', `${s.image} ${s.docker ? (s.imageExists ? '(built)' : '(not built)') : '(unknown)'}`],
         ['baked in', s.features.length ? s.features.join(', ') : '(base only)'],

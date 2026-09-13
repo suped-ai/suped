@@ -239,3 +239,25 @@ test('a usable Docker reports no problem', (t) => {
   assert.equal(computer.dockerProblem(), null);
   assert.equal(computer.hasDocker(), true);
 });
+
+// --- where a command runs ---
+
+test('a directory for exec is resolved inside the home, the way every document names it', () => {
+  assert.equal(computer.resolveHomePath(undefined), computer.WORKDIR);
+  assert.equal(computer.resolveHomePath(''), computer.WORKDIR);
+  assert.equal(computer.resolveHomePath('projects/app'), '/home/suped/projects/app');
+  assert.equal(computer.resolveHomePath('~/projects/app/'), '/home/suped/projects/app');
+  assert.equal(computer.resolveHomePath('~'), '/home/suped');
+  assert.equal(computer.resolveHomePath('/home/suped/notes'), '/home/suped/notes');
+  assert.throws(() => computer.resolveHomePath('../etc'), /inside the home/);
+  assert.throws(() => computer.resolveHomePath('projects/../../etc'), /inside the home/);
+  assert.throws(() => computer.resolveHomePath('/etc'), /must be inside \/home\/suped/);
+});
+
+test('exec and shell run where they are told, and in ~/workspace otherwise', (t) => {
+  const calls = mockDocker(t);
+  computer.exec(['pnpm', 'test'], { cwd: 'projects/app' });
+  assert.equal(calls[0].args[calls[0].args.indexOf('-w') + 1], '/home/suped/projects/app');
+  computer.exec(['true']);
+  assert.equal(calls[1].args[calls[1].args.indexOf('-w') + 1], computer.WORKDIR);
+});
