@@ -219,6 +219,26 @@ try {
   assert.match(sh('cd ~/projects/wip && git log --oneline -1'), /unpushed/);
   assert.ok(sh('cd ~/projects/wip && git status --porcelain').trim().length, 'the work arrives uncommitted');
   console.log('PASS work in progress travelled: a dirty tree, a deletion, an untracked file, and an unpushed commit');
+
+  // The daily case: both machines already have the repository. Work is applied
+  // only into a checkout with nothing of its own to lose -- and ~/projects/wip
+  // on the far side is now holding the work restored a moment ago, so the same
+  // run must carry one and refuse the other.
+  use(source);
+  sh("cd ~/projects/demo && printf 'handed over\\n' >> content.txt");
+  const handoffDir = join(fileDir, 'handoff');
+  const handed = cli(['move', 'save', handoffDir]);
+  assert.match(handed, /projects\/demo/);
+
+  use(target);
+  sh('cd ~/projects/demo && test -z "$(git status --porcelain)"');
+  const landed = cli(['move', 'restore', handoffDir]);
+  assert.match(landed, /~\/projects\/demo was already here; brought its work in progress over/);
+  assert.equal(sh('cat ~/projects/demo/content.txt'), 'carried by projects\nhanded over\n');
+  // And the one that had work of its own was refused, with somewhere to look.
+  assert.match(landed, /already here, and it has uncommitted changes here/);
+  assert.match(landed, /waiting on the remote at refs\/suped\//);
+  console.log('PASS work landed in a checkout that already existed, and was refused where it would have overwritten');
 } finally {
   // The bare repositories were created by the container's user, which is not
   // the user running this, so the host cannot unlink them. Delete them from

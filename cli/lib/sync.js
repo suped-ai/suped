@@ -336,9 +336,20 @@ export function createSync({
       if (!project.remote) { skipped.push([project.path, 'no remote recorded']); continue; }
       const target = `$HOME/${project.path}`;
       if (capture(['bash', '-lc', `test -e "${target}"`]).status === 0) {
-        // Never apply carried work over a directory that is already here: it
-        // would overwrite whatever this machine has been doing in it.
-        skipped.push([project.path, project.work ? 'already here; its carried work was left alone' : 'already here']);
+        // The clone is already here, but its carried work may not be. Applying
+        // it is safe only when this checkout has nothing of its own to lose,
+        // which `apply` decides and refuses on its own.
+        if (!project.work) { skipped.push([project.path, 'already here']); continue; }
+        const applied = carrier.apply(project);
+        if (applied.applied) {
+          log(`  ~/${project.path} was already here; brought its work in progress over`);
+        } else if (applied.held) {
+          skipped.push([project.path, `already here, and ${applied.why}`]);
+          log(`  its work in progress is waiting on the remote at ${project.work.ref}`);
+        } else {
+          skipped.push([project.path, `already here; could not bring its work over (${applied.why})`]);
+          failed = true;
+        }
         continue;
       }
       log(`Cloning ${project.remote} into ~/${project.path}...`);
@@ -350,7 +361,7 @@ export function createSync({
       }
       cloned.push(project.path);
       if (project.work) {
-        const applied = carrier.apply(project);
+        const applied = carrier.apply(project, { fresh: true });
         if (applied.applied) {
           log(`  restored ${applied.dirty ? 'uncommitted changes' : 'commits that were not on a branch'} in ~/${project.path}`);
         } else {

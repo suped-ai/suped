@@ -211,11 +211,20 @@ with plain git if you ever need to. Capturing it does not disturb the repository
 — no stash, no checkout — and on the other machine it comes back as what it was:
 uncommitted changes. Use `--no-work` to leave it behind.
 
-Two honest limits. A project with **no remote** has nowhere to put its work, and
-`move` says so instead of pretending. And work is only restored into a project
-`move` just cloned — never over a directory that is already on the far machine,
-because that would overwrite whatever you have been doing in it. The staged and
-unstaged distinction is not preserved; everything arrives as changes.
+Work lands in a project the far machine already has, as long as that checkout
+has nothing of its own to lose: it must be clean, on the same branch, and not
+ahead on a history of its own. Otherwise `move` refuses, says which of those it
+was, and tells you the ref the work is still sitting on. Refusing costs nothing
+— the work stays on the remote either way — and it is the only behaviour that
+cannot destroy what the other machine was doing.
+
+**This is a handoff, not two-way replication.** The machine you left keeps its
+copy of the work; suped will not delete uncommitted work anywhere, ever. So
+hand off in one direction, and commit or discard before you hand back.
+
+Two smaller limits: a project with **no remote** has nowhere to put its work,
+and `move` says so instead of pretending; and the staged/unstaged distinction is
+not preserved — everything arrives as changes.
 
 Your identity file is deliberately **not** in that directory. Everything written
 there is safe to commit; the identity is the one thing that is not. Without it

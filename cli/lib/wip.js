@@ -81,26 +81,52 @@ printf '%s %s\\n' "$commit" "$head"`;
   }
 
   /**
-   * Put the work back. HEAD goes to the branch the other machine was on, then
-   * the working tree is filled from the carried commit and the index is reset
-   * back to HEAD -- so the changes reappear exactly as they were: uncommitted,
-   * including deletions and files that were never added.
+   * Put the work back.
+   *
+   * A freshly cloned project is only the easy case of a general rule: work can
+   * be applied when the checkout is clean and its history is behind or level
+   * with the machine the work came from. Anything else -- local changes, a
+   * different branch, a history that has moved on -- is refused, because
+   * applying over it would destroy whatever this machine has been doing. The
+   * work stays on the remote either way, so refusing costs nothing.
+   *
+   * HEAD goes to the commit the other machine was on, the working tree is
+   * filled from the carried commit, and the index is reset back, which is what
+   * makes the changes reappear as changes rather than as history.
    */
-  function apply(project) {
+  function apply(project, { fresh = false } = {}) {
     const work = project.work;
     if (!work) return { applied: false };
     const branch = String(project.branch || '').replace(/[^A-Za-z0-9._/-]+/g, '-') || 'main';
     const restore = work.commit === work.head ? '' : `
 git read-tree -u --reset "${work.commit}"
 git reset -q --mixed "${work.head}"`;
+    // A clone has nothing of its own to protect, so it does not have to be on
+    // the branch the work belongs to. An existing checkout does.
+    const sameBranch = fresh ? '' : `
+now=$(git symbolic-ref --quiet --short HEAD || printf '')
+if [ -n "$now" ] && [ "$now" != "${branch}" ]; then printf 'OTHERBRANCH %s\\n' "$now"; exit 0; fi`;
     const result = sh(`set -e
 cd "$HOME/${project.path}"
 git fetch -q origin "${work.ref}"
-git checkout -q -B "${branch}" "${work.head}"${restore}`);
+if [ -n "$(git status --porcelain)" ]; then printf 'DIRTY\\n'; exit 0; fi${sameBranch}
+current=$(git rev-parse --verify HEAD 2>/dev/null || printf '')
+if [ -n "$current" ] && [ "$current" != "${work.head}" ] && ! git merge-base --is-ancestor "$current" "${work.head}"; then
+  printf 'DIVERGED\\n'; exit 0
+fi
+git checkout -q -B "${branch}" "${work.head}"${restore}
+printf 'APPLIED\\n'`);
     if (result.status !== 0) {
       return { applied: false, why: (result.stderr || '').trim().split('\n').pop() || 'git could not restore it' };
     }
-    return { applied: true, dirty: work.commit !== work.head };
+    const [outcome, detail] = (result.stdout || '').trim().split(/\s+/);
+    if (outcome === 'APPLIED') return { applied: true, dirty: work.commit !== work.head };
+    const why = {
+      DIRTY: 'it has uncommitted changes here',
+      OTHERBRANCH: `it is on branch ${detail} here, not ${branch}`,
+      DIVERGED: 'its history here has moved on independently',
+    }[outcome] || 'git did not say what happened';
+    return { applied: false, why, held: true };
   }
 
   return { carry, apply };
