@@ -20,7 +20,7 @@ usage
   suped state init [url]   keep this workspace's definition in a git repository
   suped state sync         converge with the shared state, then record and push
   suped move               show everything that would travel, and what would not
-  suped move save <dir>    write the workspace and its sealed credentials together
+  suped move save <dir> [--no-work]   write the workspace, its work in progress, and its sealed credentials
   suped move restore <dir>    rebuild that workspace here, and sign its tools back in
   suped secrets            show the account store, and what is waiting on you
   suped secrets key        create this workspace's encryption identity

@@ -177,6 +177,48 @@ try {
   const shown = cli(['state']);
   assert.match(shown, /In step with the shared state/);
   console.log('PASS one machine gained what another did, through shared state');
+
+  // Work in progress. The half of a move that was always left behind: a dirty
+  // tree, a deletion, an untracked file, and a commit that is on no remote.
+  use(source);
+  sh(`set -e
+    git init --bare -q ~/remotes/wip.git
+    git clone -q ~/remotes/wip.git ~/projects/wip
+    cd ~/projects/wip
+    git checkout -q -b main
+    printf 'original\\n' > kept.txt
+    printf 'doomed\\n' > doomed.txt
+    git add -A
+    git -c user.name=suped -c user.email=suped@example.invalid commit -q -m base
+    git push -q -u origin main
+    printf 'committed but never pushed\\n' >> kept.txt
+    git add -A
+    git -c user.name=suped -c user.email=suped@example.invalid commit -q -m unpushed
+    printf 'not committed at all\\n' >> kept.txt
+    rm doomed.txt
+    printf 'brand new\\n' > untracked.txt`);
+  const before = sh('cd ~/projects/wip && git rev-parse HEAD && git status --porcelain | sort');
+
+  const workDir = join(fileDir, 'with-work');
+  const carried = cli(['move', 'save', workDir]);
+  assert.match(carried, /Work in progress is coming with you/);
+  assert.match(carried, /projects\/wip/);
+  // Carrying must not disturb the repository it carried.
+  assert.equal(sh('cd ~/projects/wip && git rev-parse HEAD && git status --porcelain | sort'), before,
+    'the source repository is exactly as it was');
+  assert.equal(sh('cd ~/projects/wip && git stash list | wc -l').trim(), '0', 'no stash was used');
+
+  use(target);
+  sh('test ! -e ~/projects/wip');
+  const back = cli(['move', 'restore', workDir]);
+  assert.match(back, /restored uncommitted changes in ~\/projects\/wip/);
+  assert.equal(sh('cat ~/projects/wip/kept.txt'), 'original\ncommitted but never pushed\nnot committed at all\n');
+  sh('test ! -e ~/projects/wip/doomed.txt');
+  assert.equal(sh('cat ~/projects/wip/untracked.txt'), 'brand new\n');
+  // The unpushed commit came too, and the changes are changes, not history.
+  assert.match(sh('cd ~/projects/wip && git log --oneline -1'), /unpushed/);
+  assert.ok(sh('cd ~/projects/wip && git status --porcelain').trim().length, 'the work arrives uncommitted');
+  console.log('PASS work in progress travelled: a dirty tree, a deletion, an untracked file, and an unpushed commit');
 } finally {
   // The bare repositories were created by the container's user, which is not
   // the user running this, so the host cannot unlink them. Delete them from

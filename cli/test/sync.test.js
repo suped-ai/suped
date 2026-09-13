@@ -292,3 +292,51 @@ test('restore needs a file', async () => {
   await assert.rejects(f.restore(), /usage: suped sync restore/);
   await assert.rejects(f.restore('missing.json'), /could not read missing\.json/);
 });
+
+// --- carrying work in progress ----------------------------------------------
+
+test('"sync save" stays a read of the workspace and never pushes anything', () => {
+  // The contract that makes sync safe to hand to someone else: describing a
+  // workspace must not have side effects on any remote.
+  const carried = [];
+  const sync = createSync({
+    capture: (argv) => {
+      const script = argv[2] ?? '';
+      if (script.includes('git push')) carried.push(script);
+      return { status: 0, stdout: '[]', stderr: '' };
+    },
+    containerRunArgs: () => [],
+    log: () => {},
+    work: { carry: () => { carried.push('carried'); return { carried: false }; }, apply: () => ({ applied: false }) },
+  });
+  sync.describe();
+  assert.deepEqual(carried, [], 'describing a workspace carries nothing');
+});
+
+test('carrying is opt-in, and what it carries lands on the project it belongs to', () => {
+  const work = { ref: 'refs/suped/wip/main', commit: 'a'.repeat(40), head: 'b'.repeat(40) };
+  const project = { path: 'projects/demo', remote: 'git@x', branch: 'main', dirty: true, unpushed: false };
+  const sync = createSync({
+    capture: (argv) => {
+      const script = argv[2] ?? '';
+      if (script.includes('found.sort') || script.includes('walk(')) return { status: 0, stdout: JSON.stringify([project]), stderr: '' };
+      return { status: 0, stdout: '{"tools":[]}', stderr: '' };
+    },
+    containerRunArgs: () => [],
+    log: () => {},
+    carryWork: true,
+    work: { carry: () => ({ carried: true, work }), apply: () => ({ applied: true, dirty: true }) },
+  });
+  const { manifest, carried, atRisk } = sync.describe();
+  assert.deepEqual(manifest.projects[0].work, work);
+  assert.equal(carried.length, 1);
+  assert.deepEqual(atRisk, [], 'work that was carried is no longer at risk of being left behind');
+});
+
+test('a manifest carrying an unusable ref or object id is refused', () => {
+  const good = { version: 1, tools: [], ports: [], mounts: [], installed: {}, projects: [{ path: 'projects/a', remote: 'git@x', branch: 'main', work: { ref: 'refs/suped/wip/main', commit: 'a'.repeat(40), head: 'b'.repeat(40) } }] };
+  assert.equal(validateManifest(good), good);
+  for (const work of [{ ref: 'refs/heads/main', commit: 'a'.repeat(40), head: 'b'.repeat(40) }, { ref: 'refs/suped/wip/x', commit: '; rm -rf /', head: 'b'.repeat(40) }]) {
+    assert.throws(() => validateManifest({ ...good, projects: [{ ...good.projects[0], work }] }), /not a usable workspace file/);
+  }
+});

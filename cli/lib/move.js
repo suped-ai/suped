@@ -25,6 +25,9 @@ export function createMove({
   log = (message) => console.log(message),
   makeSync,
   makeSecrets,
+  // Moving is exactly when work in progress should come along. `sync save` on
+  // its own stays a read of the workspace; this is the command that moves you.
+  carryWork = true,
   exists = (path) => existsSync(path),
   makeDir = (path) => mkdirSync(path, { recursive: true }),
 } = {}) {
@@ -42,7 +45,7 @@ export function createMove({
     makeDir(dir);
     log(`Saving this workspace to ${dir}`);
 
-    makeSync({ log: section(MANIFEST_NAME) }).save(manifest);
+    makeSync({ log: section(MANIFEST_NAME), carryWork }).save(manifest);
     // A workspace with nothing signed in has nothing to seal, which is a
     // complete move and not a failure -- but it must be said, not implied.
     const sealed = makeSecrets({ log: section(SECRETS_NAME) }).save(secrets) === 0;
@@ -108,6 +111,7 @@ export async function mainMove(args, { runArgs = [], flags = new Set() } = {}) {
   const move = createMove({
     makeSync: (options) => createSync(options),
     makeSecrets: (options) => createSecrets({ ...options, flags }),
+    carryWork: !flags.has('no-work'),
   });
   if (action === 'save') return move.save(rest[0]);
   if (action === 'restore') return move.restore(rest[0]);
