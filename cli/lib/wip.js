@@ -108,7 +108,8 @@ now=$(git symbolic-ref --quiet --short HEAD || printf '')
 if [ -n "$now" ] && [ "$now" != "${branch}" ]; then printf 'OTHERBRANCH %s\\n' "$now"; exit 0; fi`;
     const result = sh(`set -e
 cd "$HOME/${project.path}"
-git fetch -q origin "${work.ref}"
+# Fetch failures are reported by the caller, so let git speak on stderr.
+git fetch --quiet --no-tags origin "+${work.ref}:${work.ref}"
 if [ -n "$(git status --porcelain)" ]; then printf 'DIRTY\\n'; exit 0; fi${sameBranch}
 current=$(git rev-parse --verify HEAD 2>/dev/null || printf '')
 if [ -n "$current" ] && [ "$current" != "${work.head}" ] && ! git merge-base --is-ancestor "$current" "${work.head}"; then
@@ -117,7 +118,10 @@ fi
 git checkout -q -B "${branch}" "${work.head}"${restore}
 printf 'APPLIED\\n'`);
     if (result.status !== 0) {
-      return { applied: false, why: (result.stderr || '').trim().split('\n').pop() || 'git could not restore it' };
+      // Say what actually happened. A bare "it failed" here means looking at a
+      // CI log to find out which git command refused and why.
+      const said = [(result.stderr || '').trim(), (result.stdout || '').trim()].filter(Boolean).join(' / ');
+      return { applied: false, why: said.split('\n').pop() || `git exited ${result.status} without saying why` };
     }
     const [outcome, detail] = (result.stdout || '').trim().split(/\s+/);
     if (outcome === 'APPLIED') return { applied: true, dirty: work.commit !== work.head };
