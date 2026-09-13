@@ -10,6 +10,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import * as computer from './computer.js';
+import { createWork, validateWork } from './wip.js';
 
 export const MANIFEST_VERSION = 1;
 
@@ -134,6 +135,8 @@ export function validateManifest(manifest) {
     for (const key of ['remote', 'branch']) {
       if (project[key] !== null && project[key] !== undefined && typeof project[key] !== 'string') fail(`project ${key} must be a string or null`);
     }
+    // Refs and object ids land in shell commands, so nothing unvalidated may.
+    if (project.work !== undefined && project.work !== null) validateWork(project.work, fail);
   }
   return manifest;
 }
@@ -148,7 +151,12 @@ export function createSync({
   write = (text) => process.stdout.write(text),
   installTools = async (tools) => (await import('./setup.js')).setup({ tools, authenticate: false, interactive: false }),
   version = computer.VERSION,
+  // Off by default: "sync save" describes a workspace and must stay a read of
+  // it. "move" turns this on, because moving is when carrying work is meant.
+  carryWork = false,
+  work = null,
 } = {}) {
+  const carrier = work ?? createWork({ capture });
 
   function selectedTools() {
     const result = capture(['node', '-e', READ_SELECTION]);
@@ -180,7 +188,19 @@ export function createSync({
     const found = projects();
     const added = installed();
     const { ports, mounts } = splitRunArgs(containerRunArgs());
+    const risky = found.filter((project) => project.dirty || project.unpushed || !project.remote);
+    const carried = [];
+    const refused = [];
+    if (carryWork) {
+      for (const project of risky) {
+        const result = carrier.carry(project);
+        if (result.carried) { project.work = result.work; carried.push(project); }
+        else refused.push([project.path, result.why]);
+      }
+    }
     return {
+      carried,
+      refused,
       manifest: {
         version: MANIFEST_VERSION,
         suped: version,
@@ -189,12 +209,24 @@ export function createSync({
         mounts,
         // Software added after setup, so a workspace that grew keeps its growth.
         installed: { apt: added.apt, uv: added.uv, npm: added.npm },
-        projects: found.map(({ path, remote, branch }) => ({ path, remote, branch })),
+        projects: found.map(({ path, remote, branch, work: carriedWork }) => (carriedWork ? { path, remote, branch, work: carriedWork } : { path, remote, branch })),
       },
       // Kept out of the manifest: this describes the machine you are leaving.
-      atRisk: found.filter((project) => project.dirty || project.unpushed || !project.remote),
+      atRisk: risky.filter((project) => !project.work),
       aptKnown: added.aptKnown,
     };
+  }
+
+  function reportCarried(carried = [], refused = []) {
+    if (carried.length) {
+      log('\nWork in progress is coming with you:');
+      for (const project of carried) {
+        const what = project.work.commit === project.work.head ? 'commits not on any branch yet' : 'uncommitted changes';
+        log(`  ~/${project.path.padEnd(34)} ${what} -> ${project.work.ref}`);
+      }
+      log('Pushed to each project\'s own remote, under refs/suped/. Your branches are untouched.');
+    }
+    for (const [path, why] of refused) log(`\nCould not carry ~/${path}: ${why}`);
   }
 
   function reportAtRisk(atRisk) {
@@ -244,7 +276,7 @@ export function createSync({
 
   /** Write the manifest to a file on this computer, or to stdout for "-". */
   function save(file) {
-    const { manifest, atRisk } = describe();
+    const { manifest, atRisk, carried, refused } = describe();
     const text = `${JSON.stringify(manifest, null, 2)}\n`;
     if (file === '-') write(text);
     else {
@@ -252,7 +284,10 @@ export function createSync({
       log(`wrote ${file}`);
       log(`${manifest.tools.length} tool(s), ${manifest.projects.length} project(s). No credentials are in this file; commit it anywhere you like.`);
     }
-    if (file !== '-') reportAtRisk(atRisk);
+    if (file !== '-') {
+      reportCarried(carried, refused);
+      reportAtRisk(atRisk);
+    }
     return 0;
   }
 
@@ -301,7 +336,9 @@ export function createSync({
       if (!project.remote) { skipped.push([project.path, 'no remote recorded']); continue; }
       const target = `$HOME/${project.path}`;
       if (capture(['bash', '-lc', `test -e "${target}"`]).status === 0) {
-        skipped.push([project.path, 'already here']);
+        // Never apply carried work over a directory that is already here: it
+        // would overwrite whatever this machine has been doing in it.
+        skipped.push([project.path, project.work ? 'already here; its carried work was left alone' : 'already here']);
         continue;
       }
       log(`Cloning ${project.remote} into ~/${project.path}...`);
@@ -312,6 +349,16 @@ export function createSync({
         continue;
       }
       cloned.push(project.path);
+      if (project.work) {
+        const applied = carrier.apply(project);
+        if (applied.applied) {
+          log(`  restored ${applied.dirty ? 'uncommitted changes' : 'commits that were not on a branch'} in ~/${project.path}`);
+        } else {
+          log(`  cloned, but could not restore its work in progress: ${applied.why}`);
+          log(`  it is still on the remote at ${project.work.ref}`);
+          failed = true;
+        }
+      }
     }
 
     log(`\nCloned ${cloned.length} project(s).`);

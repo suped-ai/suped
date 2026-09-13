@@ -203,6 +203,20 @@ suped move save ./my-workspace # both halves, together
 suped move restore ./my-workspace   # on the other machine
 ```
 
+`move save` also brings your **work in progress**: uncommitted changes, files
+you never added, deletions, and commits that are on no remote. Each project's
+work is pushed to a ref under `refs/suped/` on that project's own remote, so it
+travels without touching your branches or your history, and it can be recovered
+with plain git if you ever need to. Capturing it does not disturb the repository
+— no stash, no checkout — and on the other machine it comes back as what it was:
+uncommitted changes. Use `--no-work` to leave it behind.
+
+Two honest limits. A project with **no remote** has nowhere to put its work, and
+`move` says so instead of pretending. And work is only restored into a project
+`move` just cloned — never over a directory that is already on the far machine,
+because that would overwrite whatever you have been doing in it. The staged and
+unstaged distinction is not preserved; everything arrives as changes.
+
 Your identity file is deliberately **not** in that directory. Everything written
 there is safe to commit; the identity is the one thing that is not. Without it
 the sealed file cannot be opened, by you or anyone else.
@@ -294,7 +308,7 @@ suped mcp add <ids...> --client codex|claude   register connections in a client
 suped mcp export <ids...> --client codex|claude|cursor   print config to merge
 suped exec <command...>  run an exact program/arguments, or one quoted shell command
 suped move               show everything that would travel, and what would not
-suped move save <dir>    write the workspace and its sealed credentials together
+suped move save <dir> [--no-work]   write the workspace, its work in progress, and its credentials
 suped move restore <dir>    rebuild that workspace here, and sign its tools back in
 suped state              what this machine and the shared state differ on
 suped state init [url]   keep the workspace's definition in a git repository
