@@ -81,26 +81,64 @@ printf '%s %s\\n' "$commit" "$head"`;
   }
 
   /**
-   * Put the work back. HEAD goes to the branch the other machine was on, then
-   * the working tree is filled from the carried commit and the index is reset
-   * back to HEAD -- so the changes reappear exactly as they were: uncommitted,
-   * including deletions and files that were never added.
+   * Put the work back.
+   *
+   * A freshly cloned project is only the easy case of a general rule: work can
+   * be applied when the checkout is clean and its history is behind or level
+   * with the machine the work came from. Anything else -- local changes, a
+   * different branch, a history that has moved on -- is refused, because
+   * applying over it would destroy whatever this machine has been doing. The
+   * work stays on the remote either way, so refusing costs nothing.
+   *
+   * HEAD goes to the commit the other machine was on, the working tree is
+   * filled from the carried commit, and the index is reset back, which is what
+   * makes the changes reappear as changes rather than as history.
    */
-  function apply(project) {
+  function apply(project, { fresh = false } = {}) {
     const work = project.work;
     if (!work) return { applied: false };
     const branch = String(project.branch || '').replace(/[^A-Za-z0-9._/-]+/g, '-') || 'main';
     const restore = work.commit === work.head ? '' : `
 git read-tree -u --reset "${work.commit}"
 git reset -q --mixed "${work.head}"`;
+    // A clone has nothing of its own to protect, so it does not have to be on
+    // the branch the work belongs to. An existing checkout does.
+    const sameBranch = fresh ? '' : `
+now=$(git symbolic-ref --quiet --short HEAD || printf '')
+if [ -n "$now" ] && [ "$now" != "${branch}" ]; then printf 'OTHERBRANCH %s\\n' "$now"; exit 0; fi`;
     const result = sh(`set -e
 cd "$HOME/${project.path}"
-git fetch -q origin "${work.ref}"
-git checkout -q -B "${branch}" "${work.head}"${restore}`);
-    if (result.status !== 0) {
-      return { applied: false, why: (result.stderr || '').trim().split('\n').pop() || 'git could not restore it' };
+# Fetch failures are reported by the caller, so let git speak on stderr.
+git fetch --quiet --no-tags origin "+${work.ref}:${work.ref}"
+if [ -n "$(git status --porcelain)" ]; then printf 'DIRTY\\n'; exit 0; fi${sameBranch}
+current=$(git rev-parse --verify HEAD 2>/dev/null || printf '')
+if [ -n "$current" ] && [ "$current" != "${work.head}" ] && ! git merge-base --is-ancestor "$current" "${work.head}"; then
+  printf 'DIVERGED\\n'; exit 0
+fi
+git checkout -q -B "${branch}" "${work.head}"${restore}
+printf 'APPLIED\\n'`);
+    // The script reports its decision explicitly, and every decision path is an
+    // `exit 0` by construction. Trust what it says it did over the exit status:
+    // a decision that was printed is better evidence than a status that
+    // disagrees with it, and treating a refusal as a failure would mark a
+    // perfectly correct "I left this alone" as a broken move.
+    const [outcome, detail] = (result.stdout || '').trim().split(/\s+/);
+    const refusals = {
+      DIRTY: 'it has uncommitted changes here',
+      OTHERBRANCH: `it is on branch ${detail} here, not ${branch}`,
+      DIVERGED: 'its history here has moved on independently',
+    };
+    if (refusals[outcome] || outcome === 'APPLIED') {
+      // Keep the disagreement visible rather than swallowing it. If this ever
+      // shows up, the decision was still right but something about how the
+      // command ran is not understood, and that is worth seeing.
+      if (result.status !== 0) log(`note: git reported ${outcome} but exited ${result.status} in ~/${project.path}`);
+      if (outcome === 'APPLIED') return { applied: true, dirty: work.commit !== work.head };
+      return { applied: false, why: refusals[outcome], held: true };
     }
-    return { applied: true, dirty: work.commit !== work.head };
+    // No decision reached us, so something actually went wrong. Say what.
+    const said = [(result.stderr || '').trim(), (result.stdout || '').trim()].filter(Boolean).join(' / ');
+    return { applied: false, why: said.split('\n').pop() || `git exited ${result.status} without saying why` };
   }
 
   return { carry, apply };

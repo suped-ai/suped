@@ -77,7 +77,7 @@ test('output git did not produce is never taken as a pair of object ids', () => 
 test('restoring uncommitted work leaves HEAD where the other machine had it', () => {
   // HEAD at the real commit, working tree from the carried one, index reset
   // back -- which is what makes the changes reappear as changes.
-  const f = fixture({ result: { status: 0, stdout: '', stderr: '' } });
+  const f = fixture({ result: { status: 0, stdout: 'APPLIED\n', stderr: '' } });
   const applied = f.work.apply({ path: 'projects/demo', branch: 'main', work: { ref: `${REF_PREFIX}/main`, commit: SHA_A, head: SHA_B } });
   assert.deepEqual(applied, { applied: true, dirty: true });
   const script = f.script();
@@ -87,7 +87,7 @@ test('restoring uncommitted work leaves HEAD where the other machine had it', ()
 });
 
 test('work that was only unpushed commits needs no working-tree surgery', () => {
-  const f = fixture({ result: { status: 0, stdout: '', stderr: '' } });
+  const f = fixture({ result: { status: 0, stdout: 'APPLIED\n', stderr: '' } });
   const applied = f.work.apply({ path: 'projects/demo', branch: 'main', work: { ref: `${REF_PREFIX}/main`, commit: SHA_A, head: SHA_A } });
   assert.deepEqual(applied, { applied: true, dirty: false });
   assert.doesNotMatch(f.script(), /read-tree/);
@@ -116,4 +116,76 @@ test('the carry commit brings its own identity, because a workspace has none', (
   for (const variable of ['GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL']) {
     assert.match(script, new RegExp(`${variable}=suped`), variable);
   }
+});
+
+// --- applying into a checkout that already exists ---------------------------
+// The daily case: both machines already have the repository. Work can be
+// applied only when this checkout has nothing of its own to lose.
+
+const WORK = { ref: `${REF_PREFIX}/main`, commit: 'a'.repeat(40), head: 'b'.repeat(40) };
+const project = { path: 'projects/demo', branch: 'main', work: WORK };
+
+test('work is never applied over a checkout with changes of its own', () => {
+  const f = fixture({ result: { status: 0, stdout: 'DIRTY\n', stderr: '' } });
+  const applied = f.work.apply(project);
+  assert.equal(applied.applied, false);
+  assert.equal(applied.held, true, 'refusing is a decision, not a failure');
+  assert.match(applied.why, /uncommitted changes here/);
+});
+
+test('work is never applied to a checkout sitting on another branch', () => {
+  const f = fixture({ result: { status: 0, stdout: 'OTHERBRANCH feature\n', stderr: '' } });
+  const applied = f.work.apply(project);
+  assert.equal(applied.applied, false);
+  assert.match(applied.why, /on branch feature here, not main/);
+});
+
+test('work is never applied to a history that has moved on independently', () => {
+  const f = fixture({ result: { status: 0, stdout: 'DIVERGED\n', stderr: '' } });
+  const applied = f.work.apply(project);
+  assert.equal(applied.applied, false);
+  assert.match(applied.why, /moved on independently/);
+});
+
+test('an existing checkout is checked for changes, branch, and ancestry before anything moves', () => {
+  const f = fixture({ result: { status: 0, stdout: 'APPLIED\n', stderr: '' } });
+  f.work.apply(project);
+  const script = f.script();
+  assert.match(script, /git status --porcelain/, 'refuses over local changes');
+  assert.match(script, /symbolic-ref/, 'refuses on another branch');
+  assert.match(script, /merge-base --is-ancestor/, 'refuses a diverged history');
+  // Every check comes before the first thing that changes the checkout.
+  assert.ok(script.indexOf('merge-base --is-ancestor') < script.indexOf('checkout -q -B'));
+});
+
+test('a fresh clone has nothing of its own to protect, so its branch is not policed', () => {
+  // Otherwise carrying work on a feature branch could never reach a new clone,
+  // which lands on the remote's default branch.
+  const f = fixture({ result: { status: 0, stdout: 'APPLIED\n', stderr: '' } });
+  f.work.apply({ ...project, branch: 'feature' }, { fresh: true });
+  assert.doesNotMatch(f.script(), /symbolic-ref/);
+  // The checks that cannot lose work are still there.
+  assert.match(f.script(), /merge-base --is-ancestor/);
+});
+
+test('a refusal the script reported is honoured even if the shell disagrees about the status', () => {
+  // The decision paths are all `exit 0` by construction, so a printed refusal
+  // is better evidence than a status that contradicts it. Treating "I left
+  // this alone" as a failure would mark a correct move as broken.
+  for (const [outcome, expected] of [['DIRTY', /uncommitted changes here/], ['DIVERGED', /moved on independently/]]) {
+    const f = fixture({ result: { status: 1, stdout: `${outcome}\n`, stderr: '' } });
+    const applied = f.work.apply(project);
+    assert.equal(applied.held, true, outcome);
+    assert.match(applied.why, expected);
+  }
+});
+
+test('a run that reported no decision at all is still a failure, and says what it could', () => {
+  const f = fixture({ result: { status: 128, stdout: '', stderr: 'fatal: not a git repository\n' } });
+  const applied = f.work.apply(project);
+  assert.equal(applied.applied, false);
+  assert.notEqual(applied.held, true);
+  assert.match(applied.why, /not a git repository/);
+  const quiet = fixture({ result: { status: 128, stdout: '', stderr: '' } });
+  assert.match(quiet.work.apply(project).why, /git exited 128/);
 });
