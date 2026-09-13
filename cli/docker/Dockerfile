@@ -20,6 +20,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 # Base tools. w3m and lynx render a page to text for about 7 MB, which covers
 # reading docs and articles without a browser engine.
+# libatomic1: official Node.js binaries from 24 on link it dynamically, and
+# without it a catalogue-installed Node dies at "error while loading shared
+# libraries" before it can even print its version.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl wget gnupg \
       bash git jq sqlite3 ripgrep unzip zip \
@@ -28,6 +31,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 python3-pip python3-venv \
       sudo tmux less vim nano openssh-client procps \
       cron \
+      libatomic1 \
       tzdata locales \
     && rm -rf /var/lib/apt/lists/*
 
@@ -115,7 +119,7 @@ ENV NPM_CONFIG_PREFIX="/home/suped/.local"
 # of the Python selection now, pinned and checksum-verified like everything
 # else in the catalogue.
 RUN mkdir -p workspace projects notes scratch downloads .config .local/bin \
-    && printf '\nexport PATH="$HOME/.local/bin:$PATH"\n' >> .bashrc
+    && printf '\ncase ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac\n' >> .bashrc
 
 WORKDIR /home/suped/workspace
 CMD ["suped-init"]

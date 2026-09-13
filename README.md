@@ -59,7 +59,7 @@ category adds the runtimes an agent needs to run code locally, each pinned and
 checksum-verified, and unpacked into the persistent home rather than the image
 — so picking one up later never means rebuilding. Selecting Python brings `uv`
 and `uvx` and puts a current CPython ahead of Ubuntu's on PATH; selecting
-Node.js puts a current Node ahead of the image's 22, for projects that need it.
+Node.js puts a current Node ahead of the image's 22, for projects that ask for one.
 
 `npm i -g` installs into the home too, and survives `reset`.
 

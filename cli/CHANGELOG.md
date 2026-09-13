@@ -7,7 +7,9 @@ version, so an image change is a package change.
 
 Found by running a real project inside a workspace as the agent would.
 
-- Add **Node.js** to the Languages catalogue (26.8.2). The image keeps Node 22, because setup installs agent clients and provider CLIs with npm and that has to exist before any selection runs — but a project could not choose a newer one, and one that runs `.ts` files directly needs native type stripping. `suped setup node` puts a current Node ahead of the image's on PATH.
+- Add **Node.js** to the Languages catalogue (26.8.2). The image keeps Node 22, because setup installs agent clients and provider CLIs with npm and that has to exist before any selection runs — but a project declaring `engines: { node: ">=26" }` had no way to get one, while every other runtime was pinnable. `suped setup node` puts a current Node ahead of the image's on PATH. The image also gains `libatomic1`, which official Node binaries from 24 on need to start at all.
+- A failed install version check now says what the executable printed. "Unexpected node version" was hiding "error while loading shared libraries: libatomic.so.1".
+- `~/.local/bin` is added to PATH once, not three times.
 - `npm i -g` works, and lands in the home. npm's global prefix was `/usr`, so the obvious way to install pnpm or any npm tool failed with EACCES, and a `sudo` install would not have survived `reset`. The image now sets `NPM_CONFIG_PREFIX` to `~/.local`.
 - Say which Docker problem it is. "Docker is not available; install Docker" covered three situations, and the one people hit — Docker installed and running, but this user not allowed to use its socket because the `docker` group was granted after login — told them to install Docker. The message now names the actual problem and the fix for each.
 
