@@ -167,3 +167,25 @@ test('a fresh clone has nothing of its own to protect, so its branch is not poli
   // The checks that cannot lose work are still there.
   assert.match(f.script(), /merge-base --is-ancestor/);
 });
+
+test('a refusal the script reported is honoured even if the shell disagrees about the status', () => {
+  // The decision paths are all `exit 0` by construction, so a printed refusal
+  // is better evidence than a status that contradicts it. Treating "I left
+  // this alone" as a failure would mark a correct move as broken.
+  for (const [outcome, expected] of [['DIRTY', /uncommitted changes here/], ['DIVERGED', /moved on independently/]]) {
+    const f = fixture({ result: { status: 1, stdout: `${outcome}\n`, stderr: '' } });
+    const applied = f.work.apply(project);
+    assert.equal(applied.held, true, outcome);
+    assert.match(applied.why, expected);
+  }
+});
+
+test('a run that reported no decision at all is still a failure, and says what it could', () => {
+  const f = fixture({ result: { status: 128, stdout: '', stderr: 'fatal: not a git repository\n' } });
+  const applied = f.work.apply(project);
+  assert.equal(applied.applied, false);
+  assert.notEqual(applied.held, true);
+  assert.match(applied.why, /not a git repository/);
+  const quiet = fixture({ result: { status: 128, stdout: '', stderr: '' } });
+  assert.match(quiet.work.apply(project).why, /git exited 128/);
+});

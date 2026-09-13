@@ -156,7 +156,7 @@ export function createSync({
   carryWork = false,
   work = null,
 } = {}) {
-  const carrier = work ?? createWork({ capture });
+  const carrier = work ?? createWork({ capture, log });
 
   function selectedTools() {
     const result = capture(['node', '-e', READ_SELECTION]);

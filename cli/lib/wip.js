@@ -117,20 +117,28 @@ if [ -n "$current" ] && [ "$current" != "${work.head}" ] && ! git merge-base --i
 fi
 git checkout -q -B "${branch}" "${work.head}"${restore}
 printf 'APPLIED\\n'`);
-    if (result.status !== 0) {
-      // Say what actually happened. A bare "it failed" here means looking at a
-      // CI log to find out which git command refused and why.
-      const said = [(result.stderr || '').trim(), (result.stdout || '').trim()].filter(Boolean).join(' / ');
-      return { applied: false, why: said.split('\n').pop() || `git exited ${result.status} without saying why` };
-    }
+    // The script reports its decision explicitly, and every decision path is an
+    // `exit 0` by construction. Trust what it says it did over the exit status:
+    // a decision that was printed is better evidence than a status that
+    // disagrees with it, and treating a refusal as a failure would mark a
+    // perfectly correct "I left this alone" as a broken move.
     const [outcome, detail] = (result.stdout || '').trim().split(/\s+/);
-    if (outcome === 'APPLIED') return { applied: true, dirty: work.commit !== work.head };
-    const why = {
+    const refusals = {
       DIRTY: 'it has uncommitted changes here',
       OTHERBRANCH: `it is on branch ${detail} here, not ${branch}`,
       DIVERGED: 'its history here has moved on independently',
-    }[outcome] || 'git did not say what happened';
-    return { applied: false, why, held: true };
+    };
+    if (refusals[outcome] || outcome === 'APPLIED') {
+      // Keep the disagreement visible rather than swallowing it. If this ever
+      // shows up, the decision was still right but something about how the
+      // command ran is not understood, and that is worth seeing.
+      if (result.status !== 0) log(`note: git reported ${outcome} but exited ${result.status} in ~/${project.path}`);
+      if (outcome === 'APPLIED') return { applied: true, dirty: work.commit !== work.head };
+      return { applied: false, why: refusals[outcome], held: true };
+    }
+    // No decision reached us, so something actually went wrong. Say what.
+    const said = [(result.stderr || '').trim(), (result.stdout || '').trim()].filter(Boolean).join(' / ');
+    return { applied: false, why: said.split('\n').pop() || `git exited ${result.status} without saying why` };
   }
 
   return { carry, apply };
