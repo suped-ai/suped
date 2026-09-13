@@ -9,10 +9,13 @@ function versionCheck(command, version, versionArgs, versionPattern) {
   const check = versionPattern
     ? `case "$current" in ${versionPattern}) return 0 ;; *) return 1 ;; esac`
     : `printf '%s\\n' "$current" | grep -Eq ${shellQuote(`(^|[^[:alnum:].])v?${escaped}([^[:alnum:].-]|$)`)}`;
+  // When the check fails, say what the executable actually printed. "Unexpected
+  // version" on its own hid a Node that could not start at all: the real
+  // message was "error while loading shared libraries: libatomic.so.1".
   return `version_matches() {
   local current
-  current=$("$1" ${args} 2>&1) || return 1
-  ${check}
+  current=$("$1" ${args} 2>&1) || { printf 'suped: %s did not run: %s\\n' "$1" "$(printf '%s' "$current" | head -1)" >&2; return 1; }
+  ${check} || { printf 'suped: %s reported "%s", wanted ${version}\\n' "$1" "$(printf '%s' "$current" | head -1)" >&2; return 1; }
 }`;
 }
 

@@ -79,11 +79,30 @@ function docker(args, { inherit = false, tty = false, input, trim = true } = {})
 }
 
 export function hasDocker() {
-  try {
-    return docker(['version', '--format', '{{.Server.Os}}']).status === 0;
-  } catch {
-    return false;
+  return dockerProblem() === null;
+}
+
+/**
+ * Why Docker cannot be used, or null when it can. "Not available" covered
+ * three different situations with one message, and the one people actually
+ * hit -- Docker installed and running, but this user not allowed to talk to
+ * it -- told them to install Docker.
+ */
+export function dockerProblem() {
+  let result;
+  try { result = docker(['version', '--format', '{{.Server.Os}}']); }
+  catch { return 'Docker is not installed. Get it from https://docs.docker.com/get-docker/'; }
+  if (result.error || result.status === 127) return 'Docker is not installed. Get it from https://docs.docker.com/get-docker/';
+  if (result.status === 0) return null;
+  const said = String(result.stderr || '');
+  if (/permission denied/i.test(said) && /docker\.sock/i.test(said)) {
+    return 'Docker is running, but this user is not allowed to use it. Add yourself to the docker group '
+      + '(sudo usermod -aG docker $USER) and start a new login session so the group takes effect.';
   }
+  if (/cannot connect to the docker daemon|is the docker daemon running/i.test(said)) {
+    return 'Docker is installed, but its daemon is not running. Start Docker Desktop, or: sudo systemctl start docker';
+  }
+  return `Docker is not usable: ${said.trim().split('\n').pop() || 'docker version failed'}`;
 }
 
 export function imageExists(image = IMAGE) {
@@ -250,9 +269,8 @@ export function removeVolume(volume = VOLUME) {
  * Returns { created: boolean, built: boolean, stale: boolean }.
  */
 export function ensureUp({ runArgs = [], features = [], migrate = false, log = () => {} } = {}) {
-  if (!hasDocker()) {
-    throw new Error('Docker is not available. Install Docker (https://docs.docker.com/get-docker/) and make sure the daemon is running.');
-  }
+  const problem = dockerProblem();
+  if (problem) throw new Error(problem);
 
   // An existing computer keeps the image it was built with; changing what is
   // baked in is a rebuild, not something a plain start should do behind you.
@@ -297,7 +315,8 @@ export function ensureUp({ runArgs = [], features = [], migrate = false, log = (
 
 /** Prepare the replacement before removing the computer; retain its connections. */
 export function resetComputer({ runArgs = [], features = null, rebuild = false, noCache = false, log = () => {} } = {}) {
-  if (!hasDocker()) throw new Error('Docker is not available. Make sure the daemon is running.');
+  const problem = dockerProblem();
+  if (problem) throw new Error(problem);
   const state = containerState();
   const retainedArgs = mergeRunArgs(state === null ? [] : containerRunArgs(), runArgs);
   // Supplying --with replaces the selection; leaving it off keeps what is there.
@@ -318,20 +337,39 @@ export function resetComputer({ runArgs = [], features = null, rebuild = false, 
   return { image, features: selected };
 }
 
-function execArgs({ interactive = false, stdin = true } = {}) {
+/**
+ * Where a command runs, as the container sees it. Relative paths are inside
+ * the home -- `projects/tuiaes` -- because that is how every document names
+ * them; `~` works too. Nothing else does, so a path cannot leave the home.
+ */
+export function resolveHomePath(dir) {
+  if (dir === undefined || dir === null || dir === '') return WORKDIR;
+  const text = String(dir).trim();
+  if (text.includes('\0')) throw new Error('directory cannot contain a NUL byte');
+  const inside = text === '~' ? '' : text.startsWith('~/') ? text.slice(2) : text.startsWith('/') ? null : text;
+  if (inside === null) {
+    if (text !== HOME && !text.startsWith(`${HOME}/`)) throw new Error(`directory must be inside ${HOME}: ${text}`);
+    return text.replace(/\/+$/, '') || HOME;
+  }
+  const parts = inside.split('/').filter((part) => part && part !== '.');
+  if (parts.includes('..')) throw new Error(`directory must stay inside the home: ${text}`);
+  return parts.length ? `${HOME}/${parts.join('/')}` : HOME;
+}
+
+function execArgs({ interactive = false, stdin = true, cwd } = {}) {
   const args = ['exec'];
   if (interactive) args.push('-it');
   else if (stdin) args.push('-i');
-  args.push('-u', USER, '-w', WORKDIR);
+  args.push('-u', USER, '-w', resolveHomePath(cwd));
   if (process.env.TERM) args.push('-e', `TERM=${process.env.TERM}`);
   args.push(CONTAINER);
   return args;
 }
 
 /** Attach an interactive login shell. Returns the shell's exit status. */
-export function shell() {
+export function shell({ cwd } = {}) {
   const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
-  return docker([...execArgs({ interactive }), 'bash', '-l'], { inherit: true, tty: interactive }).status;
+  return docker([...execArgs({ interactive, cwd }), 'bash', '-l'], { inherit: true, tty: interactive }).status;
 }
 
 function commandArgs(command) {
@@ -344,9 +382,9 @@ function commandArgs(command) {
 }
 
 /** Run a shell string or exact argv inside the computer. Returns exit status. */
-export function exec(command) {
+export function exec(command, { cwd } = {}) {
   const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
-  return docker([...execArgs({ interactive }), ...commandArgs(command)], { inherit: true, tty: interactive }).status;
+  return docker([...execArgs({ interactive, cwd }), ...commandArgs(command)], { inherit: true, tty: interactive }).status;
 }
 
 /** Capture raw output without a TTY; input is delivered through stdin, never shell text. */

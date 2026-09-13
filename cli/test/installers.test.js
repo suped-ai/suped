@@ -287,3 +287,21 @@ test('a toolchain is only complete once postInstall has produced what it provide
     assert.match(retry.stderr, /CALLED:curl/);
   });
 });
+
+test('a version check that fails says what the executable printed, not just "unexpected"', { skip: !bashAvailable }, () => {
+  // A Node that could not start at all was reported as an unexpected version.
+  // The real message was "error while loading shared libraries".
+  withFixture((fixture) => {
+    const broken = execute(binaryRecipe(), fixture, {
+      before: `write_fake_executable() { printf '%s\\n' '#!/bin/bash' 'echo "error while loading shared libraries: libatomic.so.1" >&2; exit 127' > "$1"; chmod +x "$1"; }`,
+    });
+    assert.equal(broken.status, 1, broken.stderr);
+    assert.match(broken.stderr, /did not run: error while loading shared libraries: libatomic\.so\.1/);
+    assertPreserved(fixture, broken);
+  });
+  withFixture((fixture) => {
+    const wrong = execute(binaryRecipe(), fixture, { executableVersion: '9.9.9' });
+    assert.equal(wrong.status, 1, wrong.stderr);
+    assert.match(wrong.stderr, /reported "9\.9\.9", wanted 1\.2\.3/);
+  });
+});

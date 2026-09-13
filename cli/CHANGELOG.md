@@ -5,6 +5,18 @@ version, so an image change is a package change.
 
 ## Unreleased
 
+Found by running a real project inside a workspace as the agent would.
+
+- Add **Node.js** to the Languages catalogue (26.8.2). The image keeps Node 22, because setup installs agent clients and provider CLIs with npm and that has to exist before any selection runs — but a project declaring `engines: { node: ">=26" }` had no way to get one, while every other runtime was pinnable. `suped setup node` puts a current Node ahead of the image's on PATH. The image also gains `libatomic1`, which official Node binaries from 24 on need to start at all.
+- A failed install version check now says what the executable printed. "Unexpected node version" was hiding "error while loading shared libraries: libatomic.so.1".
+- A new workspace's `~/.local/bin` is on PATH once, not three times. Ubuntu's stock `.profile` prepended it unconditionally and `exec` runs commands through nested login shells. An existing home keeps its own `.profile`, so this reaches new workspaces only — it is cosmetic either way.
+- `npm i -g` works, and lands in the home. npm's global prefix was `/usr`, so the obvious way to install pnpm or any npm tool failed with EACCES, and a `sudo` install would not have survived `reset`. The image now sets `NPM_CONFIG_PREFIX` to `~/.local`.
+- `-C <dir>` runs `exec` or `shell` in a directory inside the home, instead of `~/workspace` every time. Relative paths are inside the home, as every document names them: `suped -C projects/app exec pnpm test`.
+- A `.suped` file names the workspace a project belongs to. Driving a named workspace meant `SUPED_CONTAINER` and `SUPED_VOLUME` on every single command; a file in the project directory or any parent sets `container`, `volume`, `image` and a default `dir`, and `suped exec pnpm test` from that directory does the rest. The environment always wins over the file, so a cloned repository can only fill in what you have not set yourself. `suped status` shows which file it read.
+- A workspace gets a git identity from its GitHub login. A fresh workspace had no `user.name` or `user.email`, so an agent's first commit failed with "please tell me who you are" — and after `suped setup github` we know exactly who that is. `user.name` comes from the profile and `user.email` is the GitHub noreply address. It only ever fills a blank; an identity you set yourself stays.
+- `npm root -g` now names the home prefix. The image's own globals (Playwright, with `--with browser`) still live at `/usr/lib/node_modules`.
+- Say which Docker problem it is. "Docker is not available; install Docker" covered three situations, and the one people hit — Docker installed and running, but this user not allowed to use its socket because the `docker` group was granted after login — told them to install Docker. The message now names the actual problem and the fix for each.
+
 ## 0.6.0 · 2026-09-13
 
 Several machines, one workspace. 0.4.0 could install and sign in; this release

@@ -9,6 +9,7 @@ const PYTHON_VERSION = '3.14.7';
 const GO_VERSION = '1.27.1';
 const DENO_VERSION = '2.9.6';
 const BUN_VERSION = '1.4.2';
+const NODE_VERSION = '26.8.2';
 
 // uv installs the interpreter and its shims itself. Name both directories
 // explicitly: uv reads XDG_BIN_HOME and XDG_DATA_HOME ahead of HOME, so on a
@@ -25,6 +26,29 @@ export UV_PYTHON_BIN_DIR="$prefix/bin"
 `;
 
 export const LANGUAGE_TOOLS = [
+  {
+    id: 'node', name: 'Node.js', category: 'languages', command: 'node', version: NODE_VERSION,
+    description: `Node.js ${NODE_VERSION} with npm and npx, ahead of the Node 22 the image ships.`,
+    docs: 'https://nodejs.org/docs/latest-v26.x/api/',
+    account: false,
+    // The image carries Node 22 because setup installs agent clients and
+    // several provider CLIs with npm, and that has to exist before any
+    // selection runs. Projects often need a newer one -- TUIaes runs .ts files
+    // directly, which needs native type stripping -- and could not choose it.
+    // Official SHASUMS256.txt values, checked September 13, 2026:
+    // https://nodejs.org/dist/v26.8.2/SHASUMS256.txt
+    install: toolchainInstall({
+      id: 'node', command: 'node', version: NODE_VERSION,
+      downloadUrl: 'https://nodejs.org/dist/v$version/$archive',
+      archive: 'node-v$version-linux-$arch.tar.gz',
+      architectures: { amd64: 'x64', arm64: 'arm64' },
+      checksums: {
+        amd64: 'badb3fe6a61b85e1352ca6564dc56b8b7bd5ecd5c474c52acc21dd0cdd586f35',
+        arm64: '746cdbf21565b4ea06f77642bb0e85466de8bb722242be2c5e006f272c361c63',
+      },
+      bins: ['node', 'npm', 'npx'],
+    }),
+  },
   {
     id: 'python', name: 'Python', category: 'languages',
     command: 'python3', aliases: ['python'], version: PYTHON_VERSION,

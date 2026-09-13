@@ -40,7 +40,7 @@ and helps you connect them. You can connect an account later.
 | Cloud | Firebase, DigitalOcean | App services and infrastructure |
 | Payments | Stripe | Payment integration and webhook development |
 | Agents | Codex, Claude Code | Run your chosen agent beside the tools |
-| Languages | Python, Go, Deno, Bun | Run scripts, build, and test locally |
+| Languages | Node.js, Python, Go, Deno, Bun | Run scripts, build, and test locally |
 | Containers | Docker | Build and run containers against a daemon you provide |
 | Workspace | Herdr | Run several agents side by side and reattach later |
 
@@ -54,11 +54,14 @@ suped tools gitlab vercel neon       # check this stack's account access
 suped setup python go                # add language toolchains
 ```
 
-Node.js and Ubuntu's Python are already in the base image. The Languages
-category adds the other runtimes an agent needs to run code locally, each
-pinned and checksum-verified, and unpacked into the persistent home rather than
-the image — so picking one up later never means rebuilding. Selecting Python
-brings `uv` and `uvx` and puts a current CPython ahead of Ubuntu's on PATH.
+Node 22 and Ubuntu's Python are already in the base image. The Languages
+category adds the runtimes an agent needs to run code locally, each pinned and
+checksum-verified, and unpacked into the persistent home rather than the image
+— so picking one up later never means rebuilding. Selecting Python brings `uv`
+and `uvx` and puts a current CPython ahead of Ubuntu's on PATH; selecting
+Node.js puts a current Node ahead of the image's 22, for projects that ask for one.
+
+`npm i -g` installs into the home too, and survives `reset`.
 
 Suped uses the provider CLIs for login. Credentials stay in their normal
 locations under `/home/suped`; Suped stores only your tool selections. Logins
@@ -346,6 +349,23 @@ Ports and extra mounts are configured at creation:
 suped -p 3000:3000 -v ~/data:/home/suped/data
 suped reset -p 8080:8080
 ```
+
+Commands run in `~/workspace` unless you say otherwise. `-C` names a directory
+inside the home, and a `.suped` file in a project directory (or any parent)
+names the workspace it belongs to, so nothing has to be repeated per command:
+
+```sh
+suped -C projects/app exec pnpm test        # run there, this once
+cat > .suped <<'EOF'                          # in the project on your host
+container = suped-app
+volume    = suped-app-home
+dir       = projects/app
+EOF
+suped exec pnpm test                        # same box, same directory, every time
+```
+
+The environment always wins over the file, so a cloned repository can only
+fill in what you have not set yourself. `suped status` shows which file it read.
 
 Reset/rebuild retain the existing ports and mounts. Supplying `-p` replaces
 the port list; `-v` replaces the extra-mount list. For `exec`, put Suped's

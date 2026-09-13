@@ -139,7 +139,9 @@ try {
   cli(['stop']);
   cli(['up']);
   assert.equal(cli(['exec', 'cat', '/home/suped/.config/suped/probe.txt']), 'saved\n');
-  cli(['exec', 'NODE_PATH="$(npm root -g)" node -e \'require("playwright").chromium.launch().then(b=>b.close()).then(()=>console.log("chromium ok"))\'']);
+  // The image installs playwright as root under /usr/lib/node_modules. npm's
+  // prefix is the home now, so `npm root -g` no longer points there.
+  cli(['exec', 'NODE_PATH=/usr/lib/node_modules node -e \'require("playwright").chromium.launch().then(b=>b.close()).then(()=>console.log("chromium ok"))\'']);
   console.log('PASS reset/restart persistence, retained connections, and Chromium launch');
 } finally {
   // Names were checked absent above and are explicit test-only names.

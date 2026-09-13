@@ -137,11 +137,14 @@ test('login failure returns a failure and can be retried', async () => {
   assert.ok(f.logs.some((message) => message.includes('suped login github')));
 });
 
-test('noninteractive launches skip setup and login rejects before accessing tools', async () => {
+test('noninteractive launches skip setup, and login names the real problem first', async () => {
   const f = fixture({ interactive: false });
   assert.equal(await f.setupIfNeeded(), 0);
-  await assert.rejects(f.loginTools(['github']), /interactive terminal/);
-  assert.equal(f.calls.length, 0);
+  assert.equal(f.calls.length, 0, 'a launch that skips setup touches nothing');
+  // "needs a terminal" used to come first, which was misleading when the tool
+  // was not even installed. Now the missing install is what is reported.
+  await assert.rejects(f.loginTools(['github']), /not installed; run "suped setup github"/);
+  assert.equal(f.calls.some(([kind]) => kind === 'run'), false, 'no login is ever started');
 });
 
 test('missing CLI prompts installation without attempting login', async () => {
@@ -181,4 +184,18 @@ test('tool status reports an install-only tool as installed, not unverified', as
   const line = f.logs.find((m) => /^Herdr/.test(m));
   assert.match(line, /installed$/);
   assert.doesNotMatch(line, /connection not verified/);
+});
+
+test('login for a tool that is already connected needs no terminal, and re-runs its follow-up', async () => {
+  // An agent re-running the follow-up from a script is exactly the case; the
+  // terminal check used to come before the connection check and refuse it.
+  const f = fixture({ interactive: false, initialInstalled: ['github'], initialConnected: ['github'] });
+  assert.equal(await f.loginTools(['github']), 0);
+  const gh = TOOLS.find((tool) => tool.id === 'github');
+  assert.ok(f.calls.some(([kind, command]) => kind === 'run' && JSON.stringify(command) === JSON.stringify(gh.afterLogin)), 'the follow-up ran');
+});
+
+test('login for a tool that is not connected still needs a terminal', async () => {
+  const f = fixture({ interactive: false, initialInstalled: ['github'] });
+  await assert.rejects(f.loginTools(['github']), /needs an interactive terminal/);
 });

@@ -223,9 +223,14 @@ export function createSetup({
     for (const tool of selected) {
       if (tool.account === false) throw new Error(`${tool.name} has no account to connect; it is installed by "suped setup ${tool.id}"`);
     }
-    if (!isInteractive()) throw new Error('login needs an interactive terminal; run "suped login <tool>" from a terminal');
     for (const tool of selected) {
       if (!installed(tool)) throw new Error(`${tool.name} is not installed; run "suped setup ${tool.id}" first`);
+    }
+    // A terminal is only needed for a login that will actually happen. A tool
+    // that is already connected just re-runs its follow-up, which an agent may
+    // well want from a script -- and nothing about that is interactive.
+    if (!isInteractive() && selected.some((tool) => !connected(tool))) {
+      throw new Error('login needs an interactive terminal; run "suped login <tool>" from a terminal');
     }
     let status = 0;
     for (const tool of selected) if (await authenticate(tool) !== 0) status = 1;

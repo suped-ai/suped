@@ -176,3 +176,16 @@ test('a different installed version does not bypass the pinned installer', { ski
     }
   });
 });
+
+test('the GitHub login leaves the workspace with a git identity, without touching one it has', async () => {
+  // A fresh workspace has no user.name or user.email, so an agent's first
+  // commit fails. After this login we know exactly who that is.
+  const { getTools } = await import('../lib/tools.js');
+  const [github] = getTools(['github']);
+  const script = github.afterLogin.at(-1);
+  assert.deepEqual(github.afterLogin.slice(0, 2), ['bash', '-lc']);
+  assert.match(script, /gh auth setup-git --hostname github\.com/, 'the original step is still there');
+  assert.match(script, /if ! git config --global user\.email/, 'only fills a blank');
+  assert.match(script, /users\.noreply\.github\.com/, 'never publishes a real address');
+  assert.doesNotMatch(script, /--unset|--replace-all/, 'never overwrites');
+});

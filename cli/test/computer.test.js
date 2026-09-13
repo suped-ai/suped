@@ -213,3 +213,51 @@ test('a replacement container has its skeleton ensured before it is used', (t) =
   computer.resetComputer();
   assert.equal(skeletonCalls(calls).length, 1, 'reset ensures the skeleton');
 });
+
+// --- saying which Docker problem it actually is ---
+
+test('a Docker socket the user may not use is not "install Docker"', (t) => {
+  // The case people hit: Docker installed and running, group granted after
+  // login. The old message told them to install Docker.
+  mockDocker(t, () => ({ status: 1, stderr: 'permission denied while trying to connect to the docker API at unix:///var/run/docker.sock' }));
+  const why = computer.dockerProblem();
+  assert.match(why, /docker group/);
+  assert.match(why, /usermod -aG docker/);
+  assert.doesNotMatch(why, /Install Docker/i);
+  assert.throws(() => computer.ensureUp({}), /docker group/);
+});
+
+test('a daemon that is not running is told apart from Docker being absent', (t) => {
+  mockDocker(t, () => ({ status: 1, stderr: 'Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?' }));
+  assert.match(computer.dockerProblem(), /daemon is not running/);
+  mockDocker(t, () => ({ status: 127, stderr: '' }));
+  assert.match(computer.dockerProblem(), /not installed/);
+});
+
+test('a usable Docker reports no problem', (t) => {
+  mockDocker(t, () => ({ status: 0, stdout: 'linux\n' }));
+  assert.equal(computer.dockerProblem(), null);
+  assert.equal(computer.hasDocker(), true);
+});
+
+// --- where a command runs ---
+
+test('a directory for exec is resolved inside the home, the way every document names it', () => {
+  assert.equal(computer.resolveHomePath(undefined), computer.WORKDIR);
+  assert.equal(computer.resolveHomePath(''), computer.WORKDIR);
+  assert.equal(computer.resolveHomePath('projects/app'), '/home/suped/projects/app');
+  assert.equal(computer.resolveHomePath('~/projects/app/'), '/home/suped/projects/app');
+  assert.equal(computer.resolveHomePath('~'), '/home/suped');
+  assert.equal(computer.resolveHomePath('/home/suped/notes'), '/home/suped/notes');
+  assert.throws(() => computer.resolveHomePath('../etc'), /inside the home/);
+  assert.throws(() => computer.resolveHomePath('projects/../../etc'), /inside the home/);
+  assert.throws(() => computer.resolveHomePath('/etc'), /must be inside \/home\/suped/);
+});
+
+test('exec and shell run where they are told, and in ~/workspace otherwise', (t) => {
+  const calls = mockDocker(t);
+  computer.exec(['pnpm', 'test'], { cwd: 'projects/app' });
+  assert.equal(calls[0].args[calls[0].args.indexOf('-w') + 1], '/home/suped/projects/app');
+  computer.exec(['true']);
+  assert.equal(calls[1].args[calls[1].args.indexOf('-w') + 1], computer.WORKDIR);
+});
