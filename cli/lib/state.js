@@ -81,7 +81,21 @@ export function createState({
   });
 
   const isRepo = () => sh(`test -d "${dir}/.git"`).status === 0;
-  const branch = () => git('symbolic-ref --quiet --short HEAD').stdout.trim() || 'main';
+
+  /**
+   * Which branch holds the shared state.
+   *
+   * Ask the remote first. A bare repository created without `-b` leaves HEAD
+   * pointing at a branch nothing ever pushes, so cloning it lands on an unborn
+   * branch of the wrong name -- and reading the state from *that* branch finds
+   * nothing, silently, which looks exactly like a workspace already in step.
+   */
+  function branch() {
+    for (const name of ['main', 'master']) {
+      if (git(`rev-parse --verify --quiet origin/${name}`).status === 0) return name;
+    }
+    return git('symbolic-ref --quiet --short HEAD').stdout.trim() || 'main';
+  }
 
   function remoteUrl() {
     const result = git('remote get-url origin 2>/dev/null');
@@ -159,8 +173,11 @@ export function createState({
     // Discarding local commits is safe: this machine's half of the union comes
     // from the workspace itself, not from the file, so nothing is lost and the
     // history stays linear and pushable.
-    if (url && git(`rev-parse --verify --quiet origin/${branch()}`).status === 0) {
-      git(`reset --hard -q origin/${branch()}`);
+    const here = branch();
+    if (url && git(`rev-parse --verify --quiet origin/${here}`).status === 0) {
+      // Name the local branch after the shared one too, so a clone that landed
+      // on an unborn branch of another name does not stay there.
+      if (git(`checkout -q -B ${here} origin/${here}`).status !== 0) git(`reset --hard -q origin/${here}`);
     }
     writeState(merged);
 
@@ -190,7 +207,7 @@ export function createState({
     }
 
     if (url) {
-      const pushed = git(`push -q origin HEAD:${branch()}`);
+      const pushed = git(`push -q origin HEAD:${here}`);
       if (pushed.status !== 0) {
         log(`Could not push to ${url}: ${pushed.stderr.trim() || 'rejected'}`);
         log('Run "suped state sync" again once the remote is reachable.');

@@ -194,3 +194,36 @@ test('a shared state written by a newer Suped is refused by name, not ignored', 
   });
   await assert.rejects(state.sync(), /unsupported version 99/);
 });
+
+test('the shared branch comes from the remote, not from whatever HEAD happens to be', async () => {
+  // A bare repository created without -b leaves HEAD on a branch nothing ever
+  // pushes, so a clone of it lands on an unborn branch of the wrong name.
+  // Reading the state from that branch finds nothing -- silently, and it looks
+  // exactly like a workspace that is already in step.
+  const seen = [];
+  let recorded = null;
+  const capture = (argv, options = {}) => {
+    const script = argv[2] ?? '';
+    seen.push(script);
+    if (script.includes(`test -d "${STATE_DIR}/.git"`)) return { status: 0, stdout: '', stderr: '' };
+    if (script.includes('symbolic-ref')) return { status: 0, stdout: 'master\n', stderr: '' };
+    if (script.includes('remote get-url')) return { status: 0, stdout: 'git@github.com:me/state.git\n', stderr: '' };
+    if (script.includes('rev-parse --verify --quiet origin/main')) return { status: 0, stdout: '', stderr: '' };
+    if (script.includes('rev-parse --verify --quiet origin/master')) return { status: 1, stdout: '', stderr: '' };
+    if (script.includes(`show origin/main:${STATE_FILE}`)) {
+      return { status: 0, stdout: JSON.stringify(of({ tools: ['github', 'go'] })), stderr: '' };
+    }
+    if (script.includes(`show origin/master:${STATE_FILE}`)) return { status: 1, stdout: '', stderr: '' };
+    if (script.includes(`cat > "${STATE_DIR}/${STATE_FILE}"`)) { recorded = JSON.parse(options.input); return { status: 0, stdout: '', stderr: '' }; }
+    if (script.includes('diff --cached --quiet')) return { status: 1, stdout: '', stderr: '' };
+    return { status: 0, stdout: '', stderr: '' };
+  };
+  const state = createState({
+    capture, log: () => {},
+    makeSync: () => ({ describe: () => ({ manifest: of({ tools: ['github'] }), atRisk: [] }), restore: async () => 0, status: () => 0 }),
+  });
+  assert.equal(await state.sync(), 0);
+  assert.deepEqual(recorded.tools, ['github', 'go'], 'the state was read from the branch the remote actually has');
+  assert.ok(seen.some((s) => s.includes('push -q origin HEAD:main')), 'and pushed back to that same branch');
+  assert.equal(seen.some((s) => s.includes('HEAD:master')), false);
+});
