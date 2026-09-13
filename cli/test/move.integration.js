@@ -143,6 +143,40 @@ try {
   assert.match(moved, /no credentials came across/);
   assert.match(moved, /already here/);
   console.log('PASS move save/restore carries the same files, and says what it could not carry');
+
+  // Shared state: the premise of 0.6.0. One machine gains what another one
+  // did, through a git repository, without anybody carrying a file by hand.
+  use(source);
+  sh('git init --bare -q ~/remotes/state.git');
+  cli(['state', 'init', '/home/suped/remotes/state.git']);
+
+  // Something new happens here, after the other machine was already set up.
+  sh(`set -e
+    git init --bare -q ~/remotes/late.git
+    git clone -q ~/remotes/late.git ~/projects/late
+    cd ~/projects/late
+    git checkout -q -b main
+    printf '%s\\n' 'made after the other machine existed' > content.txt
+    git add content.txt
+    git -c user.name=suped -c user.email=suped@example.invalid commit -q -m 'late'
+    git push -q -u origin main`);
+  const recorded = cli(['state', 'sync']);
+  assert.match(recorded, /Recorded this machine's state|Pushed to/);
+
+  // The other machine adopts the shared state and converges on it.
+  use(target);
+  sh('test ! -e ~/projects/late');
+  const adopted = cli(['state', 'init', '/home/suped/remotes/state.git']);
+  assert.match(adopted, /Adopted the shared state/);
+  assert.match(adopted, /projects\/late/);
+  assert.equal(sh('cat ~/projects/late/content.txt'), 'made after the other machine existed\n');
+
+  // And now both sides agree, without anything left to do.
+  const settled = cli(['state', 'sync']);
+  assert.match(settled, /already matches the shared state/);
+  const shown = cli(['state']);
+  assert.match(shown, /In step with the shared state/);
+  console.log('PASS one machine gained what another did, through shared state');
 } finally {
   // The bare repositories were created by the container's user, which is not
   // the user running this, so the host cannot unlink them. Delete them from
