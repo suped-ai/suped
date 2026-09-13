@@ -119,7 +119,11 @@ ENV NPM_CONFIG_PREFIX="/home/suped/.local"
 # of the Python selection now, pinned and checksum-verified like everything
 # else in the catalogue.
 RUN mkdir -p workspace projects notes scratch downloads .config .local/bin \
-    && printf '\ncase ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac\n' >> .bashrc
+    && printf '\ncase ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac\n' >> .bashrc \
+    # Ubuntu's stock .profile prepends ~/.local/bin unconditionally, and exec
+    # runs commands through nested login shells, so it ended up on PATH three
+    # times. Guard that line the same way.
+    && sed -i 's|^\(\s*\)PATH="$HOME/.local/bin:$PATH"|\1case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) PATH="$HOME/.local/bin:$PATH" ;; esac|' .profile
 
 WORKDIR /home/suped/workspace
 CMD ["suped-init"]
