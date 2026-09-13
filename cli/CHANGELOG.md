@@ -11,6 +11,8 @@ Found by running a real project inside a workspace as the agent would.
 - A failed install version check now says what the executable printed. "Unexpected node version" was hiding "error while loading shared libraries: libatomic.so.1".
 - A new workspace's `~/.local/bin` is on PATH once, not three times. Ubuntu's stock `.profile` prepended it unconditionally and `exec` runs commands through nested login shells. An existing home keeps its own `.profile`, so this reaches new workspaces only — it is cosmetic either way.
 - `npm i -g` works, and lands in the home. npm's global prefix was `/usr`, so the obvious way to install pnpm or any npm tool failed with EACCES, and a `sudo` install would not have survived `reset`. The image now sets `NPM_CONFIG_PREFIX` to `~/.local`.
+- A workspace gets a git identity from its GitHub login. A fresh workspace had no `user.name` or `user.email`, so an agent's first commit failed with "please tell me who you are" — and after `suped setup github` we know exactly who that is. `user.name` comes from the profile and `user.email` is the GitHub noreply address. It only ever fills a blank; an identity you set yourself stays.
+- `npm root -g` now names the home prefix. The image's own globals (Playwright, with `--with browser`) still live at `/usr/lib/node_modules`.
 - Say which Docker problem it is. "Docker is not available; install Docker" covered three situations, and the one people hit — Docker installed and running, but this user not allowed to use its socket because the `docker` group was granted after login — told them to install Docker. The message now names the actual problem and the fix for each.
 
 ## 0.6.0 · 2026-09-13

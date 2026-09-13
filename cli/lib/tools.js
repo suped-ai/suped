@@ -147,7 +147,17 @@ const CATALOGUE = [
     // GH_BROWSER prints the device URL instead of attempting a container browser.
     // https://cli.github.com/manual/gh_auth_login
     login: ['env', 'GH_BROWSER=echo', 'gh', 'auth', 'login', '--hostname', 'github.com', '--git-protocol', 'https', '--web'],
-    afterLogin: ['gh', 'auth', 'setup-git', '--hostname', 'github.com'],
+    // Also give the workspace a git identity when it has none. A fresh
+    // workspace has no user.name or user.email, so an agent's first commit
+    // fails with "please tell me who you are" -- and after this login we know
+    // exactly who that is. Only ever fills a blank; a chosen identity stays.
+    afterLogin: ['bash', '-lc', `set -e
+gh auth setup-git --hostname github.com
+if ! git config --global user.email >/dev/null 2>&1; then
+  IFS=$'\\t' read -r login id name < <(gh api user --jq '[.login, (.id|tostring), (.name // .login)] | @tsv')
+  git config --global user.name "$name"
+  git config --global user.email "$id+$login@users.noreply.github.com"
+fi`],
     authInstructions: 'GitHub will display a one-time code. Press Enter when prompted, then open the printed URL in your browser and enter the code.',
     check: ['gh', 'api', '--hostname', 'github.com', 'user'],
     connected(result) {
