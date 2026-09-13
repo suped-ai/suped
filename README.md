@@ -223,6 +223,36 @@ read in a diff; the sealed store is opaque and changes completely every time it
 is written, so folding them together would make every save a whole-file change.
 Each half is also usable on its own:
 
+### Keep several machines in step
+
+`move` is a one-off: you carry a directory. If you work from more than one
+machine regularly, put the workspace's definition in a git repository instead
+and let each machine converge on it.
+
+```sh
+suped state init git@github.com:you/workspace-state.git   # once, on the first machine
+suped state init git@github.com:you/workspace-state.git   # on each other machine
+suped state sync                                          # whenever you want to converge
+suped state                                               # what differs, without changing anything
+```
+
+`state sync` pulls, installs any tool and clones any project the shared state
+has and this machine does not, records what this machine is, and pushes.
+`git log` on that repository is the workspace's history.
+
+Most of the time there is nothing to resolve. Two machines that each added a
+tool have not conflicted — they have both added a tool, and nearly everything
+that defines a workspace is a set. Where both know the same project path, this
+machine's checkout wins, because it is the truth about where that clone points.
+
+**Ports and mounts are not shared.** A mount names a host path the other machine
+does not have, and a published port describes where the workspace is running
+rather than what it is. They stay on the container, which is where they belong.
+
+The state repository lives inside the workspace and pushes with the GitHub
+connection the workspace already has, so there is nothing extra to authenticate.
+It contains no credentials — those still travel through `move` or `secrets`.
+
 ### The workspace, without credentials
 
 A workspace is defined by the tools you selected, the ports and mounts it was
@@ -266,6 +296,9 @@ suped exec <command...>  run an exact program/arguments, or one quoted shell com
 suped move               show everything that would travel, and what would not
 suped move save <dir>    write the workspace and its sealed credentials together
 suped move restore <dir>    rebuild that workspace here, and sign its tools back in
+suped state              what this machine and the shared state differ on
+suped state init [url]   keep the workspace's definition in a git repository
+suped state sync         converge with the shared state, then record and push
 suped sync               show what defines this workspace, and what would not move
 suped sync save <file>   write the workspace to a portable file (no credentials)
 suped sync restore <file>  install that workspace's tools and clone its projects
