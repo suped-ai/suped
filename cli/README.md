@@ -10,10 +10,12 @@ persistent home between sessions.
 npx suped@latest
 ```
 
-Version 0.4.0 includes guided setup, 23 optional CLIs, nine official MCP
+Version 0.6.0 includes guided setup, 23 optional CLIs, nine official MCP
 connections, language runtimes and the Docker client for local work, a base
 image that builds in about a minute with the heavy software opt-in, workspaces
-that move between machines, encrypted account handoff, and a scheduler.
+that move between machines with the work you were in the middle of, shared
+state that keeps several machines in step, encrypted account handoff, and a
+scheduler.
 
 ## Requirements
 
