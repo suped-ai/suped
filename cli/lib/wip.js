@@ -59,7 +59,13 @@ tree=$(git write-tree)
 if [ "$tree" = "$(git rev-parse "$head^{tree}")" ]; then
   commit="$head"
 else
-  commit=$(git commit-tree "$tree" -p "$head" -m 'suped: work in progress')
+  # A workspace has no git identity configured, and commit-tree refuses without
+  # one. Supply it here rather than reading the user's: this commit is a
+  # transport artefact under refs/suped/, not something they authored, and it is
+  # never merged into their history.
+  commit=$(GIT_AUTHOR_NAME=suped GIT_AUTHOR_EMAIL=suped@localhost \
+    GIT_COMMITTER_NAME=suped GIT_COMMITTER_EMAIL=suped@localhost \
+    git commit-tree "$tree" -p "$head" -m 'suped: work in progress')
 fi
 git push -q --force origin "$commit:${ref}"
 printf '%s %s\\n' "$commit" "$head"`;

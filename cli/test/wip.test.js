@@ -106,3 +106,14 @@ test('a restore that fails says where the work still is', () => {
   assert.equal(applied.applied, false);
   assert.match(applied.why, /could not read from remote/);
 });
+
+test('the carry commit brings its own identity, because a workspace has none', () => {
+  // commit-tree refuses without one, and suped never configures a git identity,
+  // so without this the first carry on any real workspace fails.
+  const f = fixture();
+  f.work.carry({ path: 'projects/demo', remote: 'git@x', branch: 'main' });
+  const script = f.script();
+  for (const variable of ['GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL']) {
+    assert.match(script, new RegExp(`${variable}=suped`), variable);
+  }
+});
