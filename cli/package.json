@@ -1,6 +1,6 @@
 {
   "name": "suped",
-  "version": "0.4.0",
+  "version": "0.6.0",
   "description": "A suped-up workspace for agents. Choose your tools, connect your accounts, and get to work.",
   "license": "MIT",
   "type": "module",
