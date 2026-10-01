@@ -9,10 +9,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "asciify-engine": "^1.0.118"
+    "asciify-engine": "^4.1.0"
   },
   "devDependencies": {
     "typescript": "^7.0.2",
-    "vite": "^8.2.2"
+    "vite": "^8.3.1"
   }
 }
